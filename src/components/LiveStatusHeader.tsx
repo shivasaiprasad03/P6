@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Check, Heart, Pause, Play, RefreshCw, Share2 } from 'lucide-react';
 import type { AirQualityReport } from '../../shared/types.js';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard.js';
@@ -6,11 +7,24 @@ interface LiveStatusHeaderProps {
   report: AirQualityReport;
   loading: boolean;
   liveEnabled: boolean;
-  secondsSinceSync: number;
+  /** Epoch ms of the last successful update. */
+  lastSyncedAt: number;
   isFavorite: boolean;
   onToggleLive: () => void;
   onRefresh: () => void;
   onToggleFavorite: () => void;
+}
+
+const AGE_TICK_MS = 10_000;
+
+/** Re-renders only this header every few seconds to keep the "updated … ago" text current. */
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(timer);
+  }, [intervalMs]);
+  return now;
 }
 
 function formatAge(seconds: number): string {
@@ -28,13 +42,15 @@ export function LiveStatusHeader({
   report,
   loading,
   liveEnabled,
-  secondsSinceSync,
+  lastSyncedAt,
   isFavorite,
   onToggleLive,
   onRefresh,
   onToggleFavorite,
 }: LiveStatusHeaderProps) {
   const { copied, copy } = useCopyToClipboard();
+  const now = useNow(AGE_TICK_MS);
+  const secondsSinceSync = Math.max(0, Math.round((now - lastSyncedAt) / 1000));
   const { current, location, weather, safestWindow } = report;
 
   const updatedAt = new Date(report.fetchedAt).toLocaleTimeString([], {
@@ -46,7 +62,7 @@ export function LiveStatusHeader({
     const summary =
       `Air quality in ${location.name}: US AQI ${current.usAqi} (${current.label}). ` +
       `PM2.5 ${current.pm25} µg/m³, PM10 ${current.pm10} µg/m³. ` +
-      `${weather.temperatureC}°C, wind ${weather.windSpeedKmh} km/h. ` +
+      (weather ? `${weather.temperatureC}°C, wind ${weather.windSpeedKmh} km/h. ` : '') +
       `Best time outside: ${safestWindow.startLabel}–${safestWindow.endLabel}.`;
     void copy(summary);
   }

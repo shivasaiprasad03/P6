@@ -1,20 +1,15 @@
-/**
- * Centralized server operational constants (hardcoded upstream allowlist,
- * timeouts, cache sizing/TTLs, rate limits, and SSE timing).
- */
+/** Server operating limits: upstream URLs, timeouts, cache sizes, rate limits and SSE timing. */
 
-/** Hardcoded HTTPS origins allowed for outbound server fetches (prevents SSRF). */
-export const UPSTREAM_ORIGINS = {
-  openMeteoGeo: 'https://geocoding-api.open-meteo.com/v1/search',
-  openMeteoAirQuality: 'https://air-quality-api.open-meteo.com/v1/air-quality',
-  openMeteoWeather: 'https://api.open-meteo.com/v1/forecast',
-  geminiApiBase: 'https://generativelanguage.googleapis.com/v1beta/models',
-} as const;
+/**
+ * Fixed HTTPS base for Gemini. Open-Meteo endpoints live in shared/airQuality/openMeteo.ts.
+ * No outbound URL is ever built from user input (prevents SSRF).
+ */
+export const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 /** Network timeout & retry limits. */
 export const NETWORK_LIMITS = {
   upstreamTimeoutMs: 4_500,
-  geminiTimeoutMs: 14_000,
+  geminiTimeoutMs: 25_000,
   geminiMaxRetries: 1,
   geminiRetryBaseMs: 350,
   jsonBodyLimit: '16kb',

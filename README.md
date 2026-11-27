@@ -1,83 +1,100 @@
 # BreatheSafe
 
-BreatheSafe shows the air quality for any city right now and over the next 24 hours, picks out the cleanest hours to be outside, and suggests practical steps a household can take to breathe less polluted air.
+A GenAI assistant that helps families and communities get through winter smog. Pick a city and describe your household, and BreatheSafe gives you a plan for the day: when to go outside, how to clean the air at home, which daily habits and swaps to change, and what to do with your neighbours. Every suggestion shows its **direct impact**: how much less polluted air your household breathes, and how much CO₂ and PM2.5 your street avoids if others join in.
 
-**Live site:** https://breathesafe-aq.web.app
+**Live site:** https://breathesafe-aq.web.app (static build, using the rule-based advisor; see [Deploying](#deploying))
 
-## What it does
+## How it meets the brief
 
-- **Today:** the current US AQI with its category, the weather, six pollutant readings (PM2.5, PM10, NO₂, O₃, SO₂, CO), the best two-hour window to go outside, and an hourly PM2.5 forecast. The forecast can also be shown as a table.
-- **Daily plan:** recommendations based on the readings and on a short household profile (who lives there, home type, cooking fuel, commute, budget). Each one lists steps, timing, cost, and an estimate of how much it cuts exposure. Also includes a message you can copy and send to neighbours or a school group.
-- **Impact calculator:** choose habits such as a DIY box-fan filter or switching to public transport, and see the estimated drop in indoor PM2.5 and the CO₂ and PM2.5 avoided when 1 to 1,000 households do the same.
-- **Ask a question:** short answers about masks, ventilation, purifiers, cooking smoke and similar topics, based on the city's current readings.
+| The brief asks for | What BreatheSafe does |
+| --- | --- |
+| Help with severe winter smog and urban air pollution | Live US AQI, six pollutants and a 24-hour PM2.5 forecast for any city (Open-Meteo / Copernicus CAMS), the **cleanest two-hour window**, and how strongly a winter inversion is trapping pollution. |
+| Low-emission daily routines | Swapping car trips for transit or carpools (sized to your commute distance), walking and cycling at clean hours on quieter streets, and a no-idling pact. |
+| Indoor air quality hacks | A DIY box-fan (Corsi-Rosenthal) filter, timing ventilation and a purifier around the clean window, wet-mopping and sealing gaps. |
+| Sustainable alternatives | Electric or induction cooking instead of gas or solid fuel, unscented cleaners instead of incense and sprays. |
+| Tailored to location and lifestyle | Uses the city's live readings and forecast, plus household size, sensitive members (babies, children, older adults, asthma, pregnancy, outdoor workers), home type, purifier, cooking fuel, commute and distance, budget, and whether you plan for a family, a school group or a residents' association. A note such as "football at 4 pm" is checked against the forecast for 4 PM. |
+| Clearly explaining the direct impact of choices | Each recommendation shows its effect on your PM2.5 dose (also in cigarette-equivalents), and on CO₂ and PM2.5 emitted, for your household and for 100 neighbouring households. The **impact calculator** opens with your plan's actions so you can add or remove them and see the totals change. |
+| Communities | A ready-to-send message for a building or parents' group, and community actions written for each role. |
 
-You can search any city or use your current location. Light, dark and high-contrast themes are available. The interface works with a keyboard and a screen reader.
+## How GenAI is used, and where it isn't trusted
 
-## Where the numbers come from
+When `GEMINI_API_KEY` is set on the server, **Google Gemini** writes the daily plan and answers questions in the "Ask a question" tab. The model handles what it is good at, personal and readable advice, and is kept away from the numbers:
 
-- Air quality and forecasts: [Open-Meteo Air Quality API](https://open-meteo.com/en/docs/air-quality-api), based on the Copernicus CAMS model. These are modelled values for the city's coordinates, not readings from a street-level sensor.
-- Weather: Open-Meteo Forecast API.
-- City search: Open-Meteo Geocoding API.
-- The cigarette comparison uses the Berkeley Earth rule of thumb (22 µg/m³ of PM2.5 ≈ one cigarette a day). The WHO comparison uses the 2021 24-hour PM2.5 guideline of 15 µg/m³.
-- The figures in the plan and the calculator are rough estimates from fixed rules in `shared/constants.ts` and `server/services/impactCalculator.ts`, not measurements.
+1. **Grounded prompt.** The model gets the live readings, the hourly forecast, the household profile and the **action catalog with every figure already tailored to this household** ([server/ai/prompts.ts](server/ai/prompts.ts)). It is told to choose actions from the catalog by id and to quote only the figures it was given.
+2. **Validated output.** The response must match a strict Zod schema ([shared/schemas.ts](shared/schemas.ts)), and `actionId` must be a catalog id. Anything else is rejected.
+3. **Numbers from code, not the model.** The impact figures shown on each card are attached from the catalog after the model replies ([server/services/aiAdvisorService.ts](server/services/aiAdvisorService.ts)), so a hallucinated number never reaches the screen.
+4. **Prompt-injection defence.** User text is stripped of control characters, escaped and wrapped in tags marked as untrusted. Obvious injection attempts never reach the model, and place names are screened before they go into the prompt.
+5. **Always works.** If there is no key, or Gemini times out or returns something invalid, the rule-based advisor ([shared/advisor/](shared/advisor/)) produces the plan from the same catalog. The UI says which engine wrote each plan and answer.
 
-If Open-Meteo can't be reached, the app shows typical winter values for the city and labels them as sample data.
+## How impact is estimated
+
+All figures come from one file, [shared/actions.ts](shared/actions.ts). They are rough, conservative per-household estimates for a winter month, not measurements.
+
+- **Your dose.** Indoor PM2.5 is estimated as 65% of outdoor PM2.5 (unfiltered winter infiltration). Each action removes a share of that dose, and several actions combine multiplicatively (two 50% cuts make 75%, not 100%), capped at 85%.
+- **Cigarette-equivalents.** Berkeley Earth's rule of thumb: 22 µg/m³ of PM2.5 breathed for a day ≈ one cigarette.
+- **Tailoring.** Transit-swap savings scale with your commute distance and vehicle (petrol, EV or two-wheeler emission factors), and are zero if you already walk, cycle or take transit. Clean cooking counts for much more with solid fuel than with gas, and for nothing if you already cook on electric. The DIY filter is skipped if you own a purifier.
+- **Honest trade-offs.** The DIY filter runs a fan, so it is shown as *adding* about 8 kg of CO₂ a month.
+- **Community scale.** Household figures × number of households. Trees = CO₂ ÷ 1.8 kg per mature tree per month.
+- **AQI.** US EPA PM2.5 breakpoints (2024 revision). The WHO comparison uses the 2021 24-hour guideline of 15 µg/m³.
+
+If Open-Meteo can't be reached, the app shows typical winter values for the city and labels them clearly as **sample data**. It never invents weather or monitoring stations.
 
 This is general guidance, not medical advice.
+
+## Architecture
+
+```
+shared/                Runs on the server AND in the browser (no Node or DOM APIs)
+  actions.ts           Action catalog: the single source of every impact figure
+  impact.ts            Dose, cigarette-equivalent and community-scale maths; the calculator
+  aqi.ts               AQI conversion, cleanest window, inversion risk (pure functions)
+  airQuality/          Open-Meteo client (time-zone aware) and the labelled sample report
+  advisor/             Rule-based plan and chat engines, prompt-injection guard
+  schemas.ts, types.ts Zod schemas; types are derived from them so they can't drift
+server/                Express API: Gemini client and prompts, caching, rate limits, security
+src/                   React app (components, hooks); lib/browserEngine.ts runs shared/ in the browser
+api/                   Vercel serverless entry point
+tests/                 Unit, API, security and accessibility tests (Vitest, Supertest, Testing Library)
+```
+
+Design choices:
+
+- **One domain layer, two runtimes.** The same `shared/` code powers the API server and the server-less static build, and the impact calculator runs in the browser with no network calls.
+- **Time-zone correct.** Open-Meteo is asked for Unix timestamps plus the city's UTC offset, so the forecast starts at the right hour and "2 PM" means 2 PM in that city, whichever time zone the server or the viewer is in.
+- **Efficient.** Bounded LRU + TTL caches with request coalescing (air quality per ~1 km cell, city search, plans); live updates over Server-Sent Events; the live clock re-renders only the status line, not the whole page.
 
 ## Running it locally
 
 Requires Node.js 22.
 
 ```bash
-git clone https://github.com/shivasaiprasad03/breathesafe.git
-cd breathesafe
 npm install
-npm run dev
+npm run dev          # web app on http://localhost:5173, API on http://127.0.0.1:3001
 ```
 
-This starts the web app on http://localhost:5173 and the API server on http://127.0.0.1:3001.
-
-Copy `.env.example` to `.env` to change settings. Everything works without a key. If you set `GEMINI_API_KEY`, the server writes plans and answers with Google Gemini. Without it, the server uses the built-in rule-based engine.
-
-## Two ways to deploy
-
-**Static site (used for the live site).** `npm run build:web` builds the app in `standalone` mode. Everything runs in the browser: Open-Meteo is called directly, and plans and answers come from the rule-based engine. The output in `dist/client` can go on any static host.
-
-```bash
-npm run deploy   # builds and deploys to Firebase Hosting (project in .firebaserc)
-```
-
-**With the API server.** `npm run build && npm start` runs the Express server, which serves the app and the `/api` routes. It adds caching, rate limiting, server-sent live updates and the optional Gemini integration. A `Dockerfile` is included, and `vercel.json` deploys the same setup to Vercel.
-
-## Scripts
+Copy `.env.example` to `.env` to change settings. Everything works without a key; add `GEMINI_API_KEY` to have Gemini write plans and answers.
 
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Web app and API server with hot reload |
-| `npm run build:web` | Static build for Firebase or any static host |
-| `npm run deploy` | Static build plus `firebase deploy --only hosting` |
-| `npm run build` | Typecheck, then build the web app and server |
-| `npm start` | Run the built server |
 | `npm test` | Run the test suite (Vitest) |
-| `npm run lint` | ESLint, including accessibility rules |
-| `npm run typecheck` | TypeScript checks for the app and server |
+| `npm run test:coverage` | Tests with a coverage report |
+| `npm run lint` | ESLint, including accessibility (jsx-a11y) rules |
+| `npm run typecheck` | TypeScript checks for the app and the server |
+| `npm run build && npm start` | Production build, served by the Express server |
+| `npm run build:web` | Static build for any static host (rule-based advisor only) |
 
-On Windows, run the tests from a path that starts with an uppercase drive letter (`C:\…`). Vitest loads two copies of itself when the working directory starts with `c:\`, and every suite then fails with `Cannot read properties of undefined (reading 'config')`.
+On Windows, run the tests from a path that starts with an uppercase drive letter (`C:\…`). With `c:\`, Vitest loads two copies of itself and every suite fails with `Cannot read properties of undefined (reading 'config')`.
 
-## Project layout
+## Deploying
 
-```
-src/            React app (components, hooks, styles)
-src/lib/        API client; browserEngine.ts runs the app without a server
-server/         Express API: Open-Meteo access, plan and answer engines, caching, rate limits
-shared/         Types, validation schemas and constants used by both sides
-api/            Vercel serverless entry point
-tests/          Unit, API and UI tests
-```
+- **With Gemini (recommended).** Run the Express server, which serves the app and the `/api` routes, with `GEMINI_API_KEY` set. The `Dockerfile` builds a small non-root image for Cloud Run or any container host, for example `gcloud run deploy breathesafe --source . --set-env-vars GEMINI_API_KEY=…`. `vercel.json` deploys the same setup to Vercel.
+- **Static only.** `npm run deploy` builds with `VITE_STANDALONE=true` and deploys `dist/client` to Firebase Hosting. Open-Meteo is called from the browser and the rule-based advisor writes the plans. Gemini is never used in this mode, because an API key must never be shipped to a browser.
 
-## Tech
+## Accessibility and usability
 
-React 19, TypeScript, Vite 7, Express 5, Zod, Lucide icons. The fonts are Fraunces, IBM Plex Sans and IBM Plex Mono, bundled with the app. Tests use Vitest, Testing Library and Supertest.
+Keyboard-operable throughout: WAI-ARIA tabs with arrow keys, a combobox city search, a skip link and visible focus. The forecast chart has a text description and a data-table view. Live regions announce updates. Light, dark and high-contrast themes are included, the layout is responsive and printable, and the app can use your browser's location. Copy is written in plain language.
 
-See [SECURITY.md](SECURITY.md) for how inputs, secrets and outbound requests are handled.
+## Security
+
+See [SECURITY.md](SECURITY.md): Zod validation of every input, a strict CSP and Helmet headers, a CORS allowlist, per-IP rate limits (tighter on AI routes), fixed outbound URLs (no SSRF), the API key kept server-side in a header, and error responses that never leak internals.

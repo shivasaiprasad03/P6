@@ -1,6 +1,8 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_HOUSEHOLD_PROFILE, PRESET_CITIES } from '../shared/constants.js';
+import { resolveActionFigures } from '../shared/actions.js';
+import type { ActionRecommendation } from '../shared/types.js';
 import { createApp } from '../server/app.js';
 
 describe('API Integration & Security Controls', () => {
@@ -115,7 +117,10 @@ describe('API Integration & Security Controls', () => {
     const first = await request(app).post('/api/advisor/plan').send(payload);
     expect(first.status).toBe(200);
     expect(first.body.recommendations.length).toBeGreaterThanOrEqual(4);
-    expect(first.body.communityMessageTemplate).toContain('New Delhi');
+    expect(first.body.communityMessage).toContain('New Delhi');
+    for (const rec of first.body.recommendations as ActionRecommendation[]) {
+      expect(rec.figures).toEqual(resolveActionFigures(rec.actionId, DEFAULT_HOUSEHOLD_PROFILE));
+    }
 
     const second = await request(app).post('/api/advisor/plan').send(payload);
     expect(second.status).toBe(200);
@@ -131,8 +136,8 @@ describe('API Integration & Security Controls', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(res.body.modelUsed).toBe('breathesafe-guardrail-v1');
-    expect(res.body.reply).toContain('urban air quality');
+    expect(res.body.engine).toBe('rules');
+    expect(res.body.reply).toContain('I can only help with air quality');
   });
 
   it('enforces sliding-window rate limiting on AI endpoints with 429 and Retry-After', async () => {
@@ -159,17 +164,29 @@ describe('API Integration & Security Controls', () => {
     expect(r3.body.error).toBe('rate_limit_exceeded');
   });
 
-  it('computes quantitative impact simulations via /api/impact/simulate', async () => {
+  it('computes impact simulations via /api/impact/simulate', async () => {
     const res = await request(app).post('/api/impact/simulate').send({
-      selectedActionIds: ['corsi-rosenthal-diy', 'transit-carpool-swap'],
+      selectedActionIds: ['diy-box-filter', 'transit-carpool-swap'],
       baselinePm25: 165,
-      householdSize: 4,
+      profile: DEFAULT_HOUSEHOLD_PROFILE,
       communityHouseholds: 50,
     });
 
     expect(res.status).toBe(200);
     expect(res.body.selectedCount).toBe(2);
-    expect(res.body.combinedPm25ExposureReductionPct).toBeGreaterThan(45);
+    expect(res.body.combinedExposureReductionPct).toBeGreaterThanOrEqual(50);
     expect(res.body.communityMonthlyCo2SavedKg).toBeGreaterThan(1000);
+  });
+
+  it('rejects impact simulations that name actions outside the catalog', async () => {
+    const res = await request(app).post('/api/impact/simulate').send({
+      selectedActionIds: ['plant-a-forest'],
+      baselinePm25: 165,
+      profile: DEFAULT_HOUSEHOLD_PROFILE,
+      communityHouseholds: 50,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('validation_error');
   });
 });

@@ -1,62 +1,43 @@
-import { useEffect, useState } from 'react';
-import { PLEDGE_ACTIONS } from '../../shared/constants.js';
-import type { ImpactSimulationResult } from '../../shared/types.js';
-import { simulateImpactApi } from '../lib/apiClient.js';
-import { PledgeActionCard } from './PledgeActionCard.js';
+import { useMemo, useState } from 'react';
+import { ACTION_LIST, resolveActionFigures, type ActionId } from '../../shared/actions.js';
+import { simulateImpact } from '../../shared/impact.js';
+import type { HouseholdProfile } from '../../shared/types.js';
+import { ActionChoiceCard } from './ActionChoiceCard.js';
 
 interface ImpactSimulatorProps {
   baselinePm25: number;
-  householdSize: number;
+  profile: HouseholdProfile;
   cityName: string;
+  /** Actions ticked when the calculator opens, normally those in today's plan. */
+  initialSelectedIds: readonly ActionId[];
 }
 
-const DEFAULT_SELECTED = [
-  'corsi-rosenthal-diy',
-  'smart-ventilation-window',
-  'transit-carpool-swap',
-  'zero-burn-anti-idling',
-];
+function formatUsd(monthlySavings: number): string {
+  if (monthlySavings === 0) return 'about the same cost as now';
+  return monthlySavings > 0
+    ? `saves about $${monthlySavings} a month`
+    : `costs about $${Math.abs(monthlySavings)} a month`;
+}
 
 /**
- * Estimates the drop in household PM2.5 exposure from selected habits, and the CO₂/PM2.5
- * avoided when 1 to 1,000 households adopt them.
+ * Shows the combined effect of chosen habits on the household's PM2.5 dose, and the
+ * CO₂ and PM2.5 avoided when 1 to 1,000 households do the same. Runs entirely in the
+ * browser using the same catalog as the plan, so the numbers update instantly.
  */
-export function ImpactSimulator({ baselinePm25, householdSize, cityName }: ImpactSimulatorProps) {
-  const [selectedIds, setSelectedIds] = useState<string[]>(DEFAULT_SELECTED);
+export function ImpactSimulator({ baselinePm25, profile, cityName, initialSelectedIds }: ImpactSimulatorProps) {
+  const [selectedIds, setSelectedIds] = useState<ActionId[]>(() => [...initialSelectedIds]);
   const [communityHouseholds, setCommunityHouseholds] = useState(100);
-  const [result, setResult] = useState<ImpactSimulationResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    const timer = setTimeout(async () => {
-      try {
-        setError(null);
-        const sim = await simulateImpactApi({
-          selectedActionIds: selectedIds,
-          baselinePm25: Math.max(1, baselinePm25),
-          householdSize,
-          communityHouseholds,
-        });
-        if (active) setResult(sim);
-      } catch (err) {
-        if (active) {
-          setError(err instanceof Error ? err.message : 'Unable to run the calculation');
-        }
-      }
-    }, 120);
+  const result = useMemo(
+    () => simulateImpact({ selectedActionIds: selectedIds, baselinePm25, profile, communityHouseholds }),
+    [selectedIds, baselinePm25, profile, communityHouseholds],
+  );
 
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [selectedIds, baselinePm25, householdSize, communityHouseholds]);
-
-  function toggleAction(id: string): void {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
-    );
+  function toggleAction(id: ActionId): void {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   }
+
+  const people = `${profile.householdSize} ${profile.householdSize === 1 ? 'person' : 'people'}`;
 
   return (
     <section className="stack-md" aria-labelledby="simulator-heading">
@@ -66,22 +47,15 @@ export function ImpactSimulator({ baselinePm25, householdSize, cityName }: Impac
           What changes if you act?
         </h2>
         <p className="muted">
-          Pick the habits you&apos;d take on. The figures estimate how much less polluted air your
-          household breathes, and what happens if neighbours join in. Based on today&apos;s PM2.5
-          in {cityName}: {baselinePm25} µg/m³.
+          Tick the habits you would take on. The figures estimate how much less polluted air your
+          household breathes, and what happens if neighbours join in. They use today&apos;s PM2.5 in{' '}
+          {cityName} ({baselinePm25} µg/m³) and your household details.
         </p>
       </div>
 
-      {error && (
-        <div className="notice notice-error" role="alert">
-          {error}
-        </div>
-      )}
-
       <div className="panel">
         <label htmlFor="community-scale-slider" className="label">
-          Households taking part:{' '}
-          <strong className="figure">{communityHouseholds.toLocaleString()}</strong>
+          Households taking part: <strong className="figure">{communityHouseholds.toLocaleString()}</strong>
         </label>
         <input
           id="community-scale-slider"
@@ -89,7 +63,7 @@ export function ImpactSimulator({ baselinePm25, householdSize, cityName }: Impac
           className="range"
           min={1}
           max={1000}
-          step={10}
+          step={1}
           value={communityHouseholds}
           onChange={(e) => setCommunityHouseholds(Number(e.target.value))}
         />
@@ -102,57 +76,55 @@ export function ImpactSimulator({ baselinePm25, householdSize, cityName }: Impac
         </div>
       </div>
 
-      {result && (
-        <div className="stat-grid" aria-live="polite">
-          <div className="panel stat">
-            <p className="stat-label">Household PM2.5 cut</p>
-            <p className="stat-value">−{result.combinedPm25ExposureReductionPct}%</p>
-            <p className="muted small">
-              Indoor PM2.5 falls to about <strong>{result.estimatedIndoorPm25After} µg/m³</strong>,
-              roughly {result.avoidedCigarettesPerMonth} fewer cigarette-equivalents a month across{' '}
-              {householdSize} {householdSize === 1 ? 'person' : 'people'}.
-            </p>
-          </div>
-
-          <div className="panel stat">
-            <p className="stat-label">CO₂ avoided each month</p>
-            <p className="stat-value">{result.communityMonthlyCo2SavedKg.toLocaleString()} kg</p>
-            <p className="muted small">
-              Plus <strong>{result.communityMonthlyPm25AvoidedKg} kg</strong> of local PM2.5 not
-              emitted. Per household: {result.householdMonthlyCo2SavedKg} kg CO₂.
-            </p>
-          </div>
-
-          <div className="panel stat">
-            <p className="stat-label">Same CO₂ as</p>
-            <p className="stat-value">{result.equivalentTreesPlanted.toLocaleString()} trees</p>
-            <p className="muted small">
-              absorb in a month. Household budget:{' '}
-              <strong>
-                {result.estimatedMonthlySavingsUsd >= 0
-                  ? `saves about $${result.estimatedMonthlySavingsUsd}/month`
-                  : `costs about $${Math.abs(result.estimatedMonthlySavingsUsd)}/month`}
-              </strong>
-              .
-            </p>
-          </div>
+      <div className="stat-grid" aria-live="polite">
+        <div className="panel stat">
+          <p className="stat-label">Your household&apos;s PM2.5 dose</p>
+          <p className="stat-value">−{result.combinedExposureReductionPct}%</p>
+          <p className="muted small">
+            Like your indoor air going from about {result.indoorPm25Before} to{' '}
+            <strong>{result.indoorPm25After} µg/m³</strong>: roughly {result.avoidedCigarettesPerMonth}{' '}
+            fewer cigarette-equivalents a month across {people}.
+          </p>
         </div>
-      )}
+
+        <div className="panel stat">
+          <p className="stat-label">CO₂ avoided each month</p>
+          <p className="stat-value">{result.communityMonthlyCo2SavedKg.toLocaleString()} kg</p>
+          <p className="muted small">
+            Plus <strong>{result.communityMonthlyPm25AvoidedKg} kg</strong> of PM2.5 not emitted locally.
+            Your household alone: {result.householdMonthlyCo2SavedKg} kg CO₂.
+          </p>
+        </div>
+
+        <div className="panel stat">
+          <p className="stat-label">Same CO₂ as</p>
+          <p className="stat-value">{result.equivalentTrees.toLocaleString()} trees</p>
+          <p className="muted small">
+            absorb in a month. For your budget, this <strong>{formatUsd(result.monthlySavingsUsd)}</strong>.
+          </p>
+        </div>
+      </div>
 
       <h3 className="section-title">
         Habits and swaps <span className="muted">({selectedIds.length} selected)</span>
       </h3>
 
       <div className="pledge-grid">
-        {PLEDGE_ACTIONS.map((action) => (
-          <PledgeActionCard
+        {ACTION_LIST.map((action) => (
+          <ActionChoiceCard
             key={action.id}
             action={action}
+            figures={resolveActionFigures(action.id, profile)}
             checked={selectedIds.includes(action.id)}
             onToggle={toggleAction}
           />
         ))}
       </div>
+
+      <p className="fineprint">
+        Estimates, not measurements. Each action&apos;s figures and how they combine are explained in
+        the project README.
+      </p>
     </section>
   );
 }

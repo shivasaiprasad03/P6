@@ -10,7 +10,7 @@ const app = createApp();
 const server = app.listen(config.port, () => {
   logger.info('BreatheSafe API listening', {
     port: config.port,
-    aiMode: config.geminiEnabled ? 'gemini-genai' : 'local-intelligence',
+    aiMode: config.geminiEnabled ? 'gemini' : 'rules',
   });
 });
 

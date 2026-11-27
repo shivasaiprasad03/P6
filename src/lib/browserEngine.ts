@@ -1,29 +1,37 @@
 /**
- * Runs the same domain logic as the Express API directly in the browser.
- * Used by the static build (Firebase Hosting), where no Node server is available:
- * Open-Meteo is called straight from the page and plans/answers come from the
- * deterministic local engines.
+ * The app's back end, run inside the browser for the static build (no API server).
+ * Calls Open-Meteo directly and uses the shared rule-based advisor. Gemini is never used
+ * here, because an API key must not be shipped to the browser.
  */
+import { buildRulesChatResponse } from '../../shared/advisor/chatEngine.js';
+import { buildRulesPlan } from '../../shared/advisor/planEngine.js';
+import { detectPromptInjection } from '../../shared/advisor/promptGuard.js';
+import { fetchLiveReport, geocodeCities } from '../../shared/airQuality/openMeteo.js';
+import { buildSampleReport } from '../../shared/airQuality/sampleReport.js';
+import { PRESET_CITIES } from '../../shared/constants.js';
 import type {
   ActionPlanResponse,
   AirQualityReport,
   ChatResponse,
   CityLocation,
   HouseholdProfile,
-  ImpactSimulationResult,
 } from '../../shared/types.js';
-import { buildLocalChatResponse } from '../../server/ai/localChatEngine.js';
-import { buildLocalActionPlan } from '../../server/ai/localPlanEngine.js';
-import { detectPromptInjection } from '../../server/ai/promptGuard.js';
-import { getAirQualityReport, searchCities } from '../../server/services/airQualityService.js';
-import { simulatePledgeImpact } from '../../server/services/impactCalculator.js';
 
-export function searchCitiesLocal(query: string): Promise<CityLocation[]> {
-  return searchCities(query);
+export async function searchCitiesLocal(query: string): Promise<CityLocation[]> {
+  try {
+    return await geocodeCities(query);
+  } catch {
+    const q = query.toLowerCase();
+    return PRESET_CITIES.filter((c) => c.name.toLowerCase().includes(q));
+  }
 }
 
-export function fetchAirQualityLocal(location: CityLocation): Promise<AirQualityReport> {
-  return getAirQualityReport(location);
+export async function fetchAirQualityLocal(location: CityLocation): Promise<AirQualityReport> {
+  try {
+    return await fetchLiveReport(location);
+  } catch {
+    return buildSampleReport(location);
+  }
 }
 
 export async function generateActionPlanLocal(params: {
@@ -31,10 +39,9 @@ export async function generateActionPlanLocal(params: {
   profile: HouseholdProfile;
   focusNote?: string;
 }): Promise<ActionPlanResponse> {
-  const report = await getAirQualityReport(params.location);
-  const note =
-    params.focusNote && !detectPromptInjection(params.focusNote) ? params.focusNote : undefined;
-  return buildLocalActionPlan(report, params.profile, note);
+  const report = await fetchAirQualityLocal(params.location);
+  const note = params.focusNote && !detectPromptInjection(params.focusNote) ? params.focusNote : undefined;
+  return buildRulesPlan(report, params.profile, note);
 }
 
 export async function sendAdvisorChatLocal(params: {
@@ -42,15 +49,6 @@ export async function sendAdvisorChatLocal(params: {
   profile: HouseholdProfile;
   message: string;
 }): Promise<ChatResponse> {
-  const report = await getAirQualityReport(params.location);
-  return buildLocalChatResponse(report, params.profile, params.message);
-}
-
-export function simulateImpactLocal(params: {
-  selectedActionIds: string[];
-  baselinePm25: number;
-  householdSize: number;
-  communityHouseholds: number;
-}): ImpactSimulationResult {
-  return simulatePledgeImpact(params);
+  const report = await fetchAirQualityLocal(params.location);
+  return buildRulesChatResponse(report, params.profile, params.message);
 }

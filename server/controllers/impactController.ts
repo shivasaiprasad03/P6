@@ -1,17 +1,11 @@
 import type { NextFunction, Request, Response } from 'express';
+import { simulateImpact } from '../../shared/impact.js';
 import { impactSimulationRequestSchema } from '../../shared/schemas.js';
-import { simulatePledgeImpact } from '../services/impactCalculator.js';
 
-/** Handles `POST /api/impact/simulate` computing household & community abatement impact. */
-export function simulateImpactHandler(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): void {
+/** `POST /api/impact/simulate`: household and community impact of a set of actions. */
+export function simulateImpactHandler(req: Request, res: Response, next: NextFunction): void {
   try {
-    const parsed = impactSimulationRequestSchema.parse(req.body);
-    const result = simulatePledgeImpact(parsed);
-    res.json(result);
+    res.json(simulateImpact(impactSimulationRequestSchema.parse(req.body)));
   } catch (err) {
     next(err);
   }

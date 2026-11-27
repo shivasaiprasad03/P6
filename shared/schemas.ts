@@ -1,21 +1,18 @@
 import { z } from 'zod';
+import { ACTION_IDS } from './actions.js';
 
 /**
- * Strips ASCII control characters (except newline and tab) and trims whitespace
- * to prevent log injection and prompt delimiter spoofing.
+ * Strips ASCII control characters (except tab, newline and carriage return) and trims
+ * whitespace, so untrusted text cannot inject log lines or spoof prompt delimiters.
  */
 export function sanitizePlainText(input: string): string {
-  let cleaned = '';
-  for (let i = 0; i < input.length; i += 1) {
-    const code = input.charCodeAt(i);
-    const isAllowedControl = code === 9 || code === 10 || code === 13;
-    const isDisallowedControl = (code >= 0 && code <= 31 && !isAllowedControl) || code === 127;
-    if (!isDisallowedControl) {
-      cleaned += input[i] ?? '';
-    }
-  }
-  return cleaned.trim();
+  // eslint-disable-next-line no-control-regex
+  return input.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim();
 }
+
+const plainText = (max: number) => z.string().max(max).transform(sanitizePlainText);
+
+// ── Household profile ────────────────────────────────────────────────────────
 
 export const vulnerableGroupSchema = z.enum([
   'infants',
@@ -25,19 +22,8 @@ export const vulnerableGroupSchema = z.enum([
   'pregnant',
   'outdoor_workers',
 ]);
-
-export const homeTypeSchema = z.enum([
-  'apartment',
-  'independent_house',
-  'shared_housing',
-]);
-
-export const cookingFuelSchema = z.enum([
-  'gas',
-  'induction_electric',
-  'biomass_solid',
-]);
-
+export const homeTypeSchema = z.enum(['apartment', 'independent_house', 'shared_housing']);
+export const cookingFuelSchema = z.enum(['gas', 'induction_electric', 'biomass_solid']);
 export const commuteModeSchema = z.enum([
   'car_petrol_diesel',
   'car_ev_hybrid',
@@ -46,13 +32,7 @@ export const commuteModeSchema = z.enum([
   'walk_cycle',
   'remote',
 ]);
-
-export const communityRoleSchema = z.enum([
-  'family',
-  'school_pta',
-  'neighborhood_rwa',
-]);
-
+export const communityRoleSchema = z.enum(['family', 'school_pta', 'neighborhood_rwa']);
 export const budgetTierSchema = z.enum(['low_cost', 'moderate', 'flexible']);
 
 export const householdProfileSchema = z.object({
@@ -67,108 +47,77 @@ export const householdProfileSchema = z.object({
   budgetTier: budgetTierSchema,
 });
 
+// ── Location ─────────────────────────────────────────────────────────────────
+
 export const cityLocationSchema = z.object({
-  name: z.string().min(1).max(100).transform(sanitizePlainText),
-  country: z.string().min(1).max(80).transform(sanitizePlainText),
-  admin1: z.string().max(100).transform(sanitizePlainText).optional(),
+  name: plainText(100).pipe(z.string().min(1)),
+  country: plainText(80).pipe(z.string().min(1)),
+  admin1: plainText(100).optional(),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
-  timezone: z.string().max(64).transform(sanitizePlainText).optional(),
+  timezone: plainText(64).optional(),
 });
 
+// ── Request bodies & query strings ──────────────────────────────────────────
+
 export const citySearchQuerySchema = z.object({
-  q: z
-    .string()
-    .min(2, 'Enter at least 2 characters to search a city')
-    .max(80, 'City query is too long')
-    .transform(sanitizePlainText)
-    .refine((val) => val.length >= 2, 'Enter at least 2 valid characters'),
+  q: plainText(80).pipe(z.string().min(2, 'Enter at least 2 characters to search a city')),
 });
 
 export const airQualityQuerySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
   lon: z.coerce.number().min(-180).max(180),
-  name: z
-    .string()
-    .min(1)
-    .max(100)
-    .transform(sanitizePlainText)
-    .optional(),
-  country: z
-    .string()
-    .min(1)
-    .max(80)
-    .transform(sanitizePlainText)
-    .optional(),
+  name: plainText(100).optional(),
+  country: plainText(80).optional(),
 });
 
 export const actionPlanRequestSchema = z.object({
   location: cityLocationSchema,
   profile: householdProfileSchema,
-  focusNote: z
-    .string()
-    .max(240, 'Focus note must be 240 characters or fewer')
-    .transform(sanitizePlainText)
-    .optional(),
+  focusNote: plainText(240).optional(),
 });
 
 export const chatTurnSchema = z.object({
   role: z.enum(['user', 'assistant']),
-  content: z.string().min(1).max(1200).transform(sanitizePlainText),
+  content: plainText(1200).pipe(z.string().min(1)),
 });
 
 export const chatRequestSchema = z.object({
   location: cityLocationSchema,
   profile: householdProfileSchema,
-  message: z
-    .string()
-    .min(2, 'Please enter a question (at least 2 characters)')
-    .max(600, 'Question must be 600 characters or fewer')
-    .transform(sanitizePlainText)
-    .refine((v) => v.length >= 2, 'Please enter a valid question'),
+  message: plainText(600).pipe(z.string().min(2, 'Please enter a question (at least 2 characters)')),
   history: z.array(chatTurnSchema).max(8).default([]),
 });
 
 export const impactSimulationRequestSchema = z.object({
-  selectedActionIds: z.array(z.string().min(1).max(60)).max(20),
-  baselinePm25: z.number().min(1).max(1000),
-  householdSize: z.number().int().min(1).max(20),
-  communityHouseholds: z.number().int().min(1).max(10000),
+  selectedActionIds: z.array(z.enum(ACTION_IDS)).max(ACTION_IDS.length),
+  baselinePm25: z.number().min(0).max(1000),
+  profile: householdProfileSchema,
+  communityHouseholds: z.number().int().min(1).max(10_000),
 });
 
-/**
- * Strict schema used to validate structured JSON responses returned by GenAI models
- * before serving them to clients (defends against hallucinated structure or XSS payloads).
- */
+// ── GenAI output contracts ──────────────────────────────────────────────────
+// The model writes the words; impact figures are attached afterwards from the
+// action catalog, so the schemas deliberately contain no numeric impact fields.
+
 export const aiRecommendationSchema = z.object({
-  id: z.string().min(1).max(64),
-  category: z.enum([
-    'low_emission_routine',
-    'indoor_air_hack',
-    'sustainable_alternative',
-    'community_action',
-  ]),
+  actionId: z.enum(ACTION_IDS),
   title: z.string().min(3).max(120),
   summary: z.string().min(10).max(320),
   steps: z.array(z.string().min(4).max(220)).min(2).max(5),
   effort: z.enum(['quick_win', 'daily_habit', 'lifestyle_shift']),
   estimatedCost: z.string().min(1).max(50),
   bestTimeWindow: z.string().min(2).max(80),
-  impact: z.object({
-    pm25ExposureReductionPct: z.number().min(0).max(95),
-    weeklyCo2SavedKg: z.number().min(0).max(500),
-    weeklyPm25AvoidedGrams: z.number().min(0).max(500),
-    personalHealthExplanation: z.string().min(10).max(320),
-    communityScaleExplanation: z.string().min(10).max(320),
-  }),
+  personalImpact: z.string().min(10).max(320),
+  communityImpact: z.string().min(10).max(320),
 });
 
 export const aiPlanPayloadSchema = z.object({
   headline: z.string().min(5).max(160),
-  winterSmogBriefing: z.string().min(20).max(600),
-  urgentAlerts: z.array(z.string().min(5).max(220)).min(1).max(4),
-  recommendations: z.array(aiRecommendationSchema).min(4).max(8),
-  communityMessageTemplate: z.string().min(20).max(700),
+  briefing: z.string().min(20).max(600),
+  alerts: z.array(z.string().min(5).max(220)).min(1).max(4),
+  recommendations: z.array(aiRecommendationSchema).min(4).max(6),
+  communityMessage: z.string().min(20).max(700),
 });
 
 export const aiChatPayloadSchema = z.object({

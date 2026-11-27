@@ -9,7 +9,7 @@ interface AirQualityOverviewProps {
   report: AirQualityReport | null;
   loading: boolean;
   liveEnabled: boolean;
-  secondsSinceSync: number;
+  lastSyncedAt: number;
   isFavorite: boolean;
   onToggleLive: () => void;
   onRefresh: () => void;
@@ -36,6 +36,43 @@ function WeatherGlyph({ icon }: { icon: WeatherConditions['conditionIcon'] }) {
   }
 }
 
+function WeatherPanel({ weather }: { weather: WeatherConditions | null }) {
+  if (!weather) {
+    return (
+      <div className="panel weather">
+        <h3 className="panel-label">Weather</h3>
+        <p className="muted">Weather is unavailable right now.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="panel weather">
+      <h3 className="panel-label">
+        <WeatherGlyph icon={weather.conditionIcon} />
+        {weather.conditionLabel}
+      </h3>
+      <dl className="facts">
+        <div>
+          <dt>Temperature</dt>
+          <dd>{weather.temperatureC} °C</dd>
+        </div>
+        <div>
+          <dt>Humidity</dt>
+          <dd>{weather.humidityPct} %</dd>
+        </div>
+        <div>
+          <dt>Wind</dt>
+          <dd>{weather.windSpeedKmh} km/h</dd>
+        </div>
+        <div>
+          <dt>UV index</dt>
+          <dd>{weather.uvIndex}</dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
 /**
  * The "Today" overview: city heading and live controls, the current AQI reading with scale,
  * weather, pollutant concentrations, best outdoor window, build-up risk, and the 24-hour forecast.
@@ -44,7 +81,7 @@ export function AirQualityOverview({
   report,
   loading,
   liveEnabled,
-  secondsSinceSync,
+  lastSyncedAt,
   isFavorite,
   onToggleLive,
   onRefresh,
@@ -82,14 +119,14 @@ export function AirQualityOverview({
         report={report}
         loading={loading}
         liveEnabled={liveEnabled}
-        secondsSinceSync={secondsSinceSync}
+        lastSyncedAt={lastSyncedAt}
         isFavorite={isFavorite}
         onToggleLive={onToggleLive}
         onRefresh={onRefresh}
         onToggleFavorite={onToggleFavorite}
       />
 
-      {report.source === 'winter-smog-fallback' && (
+      {report.source === 'sample' && (
         <div className="notice notice-warn" role="status">
           The live feed couldn&apos;t be reached, so these are <strong>sample values</strong> typical
           for {location.name} in winter. Refresh to try again.
@@ -117,30 +154,7 @@ export function AirQualityOverview({
           </p>
         </div>
 
-        <div className="panel weather">
-          <h3 className="panel-label">
-            <WeatherGlyph icon={weather.conditionIcon} />
-            {weather.conditionLabel}
-          </h3>
-          <dl className="facts">
-            <div>
-              <dt>Temperature</dt>
-              <dd>{weather.temperatureC} °C</dd>
-            </div>
-            <div>
-              <dt>Humidity</dt>
-              <dd>{weather.humidityPct} %</dd>
-            </div>
-            <div>
-              <dt>Wind</dt>
-              <dd>{weather.windSpeedKmh} km/h</dd>
-            </div>
-            <div>
-              <dt>UV index</dt>
-              <dd>{weather.uvIndex}</dd>
-            </div>
-          </dl>
-        </div>
+        <WeatherPanel weather={weather} />
       </div>
 
       <div className="panel">

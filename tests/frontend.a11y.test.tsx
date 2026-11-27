@@ -2,12 +2,9 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_HOUSEHOLD_PROFILE, PRESET_CITIES } from '../shared/constants.js';
-import {
-  buildLocalActionPlan,
-  buildLocalChatResponse,
-} from '../server/services/aiAdvisorService.js';
-import { buildFallbackAirQualityReport } from '../server/services/airQualityService.js';
-import { simulatePledgeImpact } from '../server/services/impactCalculator.js';
+import { buildRulesChatResponse } from '../shared/advisor/chatEngine.js';
+import { buildRulesPlan } from '../shared/advisor/planEngine.js';
+import { buildSampleReport } from '../shared/airQuality/sampleReport.js';
 import { App } from '../src/App.js';
 import { ErrorBoundary } from '../src/components/ErrorBoundary.js';
 
@@ -54,9 +51,9 @@ class MockEventSource {
 }
 
 describe('BreatheSafe frontend accessibility and core user flows', () => {
-  const sampleReport = buildFallbackAirQualityReport(PRESET_CITIES[0]!);
-  const samplePlan = buildLocalActionPlan(sampleReport, DEFAULT_HOUSEHOLD_PROFILE);
-  const sampleChat = buildLocalChatResponse(
+  const sampleReport = buildSampleReport(PRESET_CITIES[0]!);
+  const samplePlan = buildRulesPlan(sampleReport, DEFAULT_HOUSEHOLD_PROFILE);
+  const sampleChat = buildRulesChatResponse(
     sampleReport,
     DEFAULT_HOUSEHOLD_PROFILE,
     'How do I build an affordable DIY air purifier?',
@@ -87,12 +84,6 @@ describe('BreatheSafe frontend accessibility and core user flows', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = typeof input === 'string' ? input : input.toString();
-        if (url.includes('/api/health')) {
-          return new Response(
-            JSON.stringify({ status: 'ok', aiMode: 'local-intelligence' }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          );
-        }
         if (url.includes('/api/air-quality')) {
           return new Response(JSON.stringify(sampleReport), {
             status: 200,
@@ -107,18 +98,6 @@ describe('BreatheSafe frontend accessibility and core user flows', () => {
         }
         if (url.includes('/api/advisor/chat')) {
           return new Response(JSON.stringify(sampleChat), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-        if (url.includes('/api/impact/simulate')) {
-          const sim = simulatePledgeImpact({
-            selectedActionIds: ['corsi-rosenthal-diy', 'transit-carpool-swap'],
-            baselinePm25: sampleReport.current.pm25,
-            householdSize: 4,
-            communityHouseholds: 100,
-          });
-          return new Response(JSON.stringify(sim), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           });
@@ -243,13 +222,13 @@ describe('BreatheSafe frontend accessibility and core user flows', () => {
     expect(simTab).toHaveAttribute('aria-selected', 'true');
 
     await waitFor(() => {
-      expect(screen.getByText(/Household PM2\.5 Cut/i)).toBeInTheDocument();
+      expect(screen.getByText(/Your household's PM2\.5 dose/i)).toBeInTheDocument();
     });
 
     // Adjust community slider & toggle pledge checkbox
     const slider = screen.getByLabelText(/Households taking part/i);
     fireEvent.change(slider, { target: { value: '250' } });
-    const diyCheckbox = screen.getByLabelText(/Build a DIY Corsi-Rosenthal/i);
+    const diyCheckbox = screen.getByLabelText(/Build a DIY box-fan filter/i);
     fireEvent.click(diyCheckbox);
     expect(diyCheckbox).not.toBeChecked();
 
@@ -267,8 +246,21 @@ describe('BreatheSafe frontend accessibility and core user flows', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Send$/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Corsi-Rosenthal/i)).toBeInTheDocument();
+      expect(screen.getByText(/MERV-13 furnace filters/i)).toBeInTheDocument();
     });
+  });
+
+  it("opens the impact calculator with the plan's own actions selected", async () => {
+    render(<App />);
+
+    const openCalculator = await screen.findByRole('button', {
+      name: /Add up these actions in the impact calculator/i,
+    });
+    fireEvent.click(openCalculator);
+
+    expect(screen.getByRole('tab', { name: /Impact calculator/i })).toHaveAttribute('aria-selected', 'true');
+    const selected = screen.getAllByRole('checkbox').filter((box) => (box as HTMLInputElement).checked);
+    expect(selected).toHaveLength(samplePlan.recommendations.length);
   });
 
   it('supports WAI-ARIA combobox keyboard selection and Escape dismissal in LocationSelector', async () => {

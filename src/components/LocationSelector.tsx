@@ -38,9 +38,9 @@ export function LocationSelector({
       setSearching(true);
       setSearchError(null);
       try {
-        const data = await searchCitiesApi(trimmed, controller.signal);
-        setResults(data.cities);
-        setActiveIndex(data.cities.length > 0 ? 0 : -1);
+        const cities = await searchCitiesApi(trimmed, controller.signal);
+        setResults(cities);
+        setActiveIndex(cities.length > 0 ? 0 : -1);
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
           return;

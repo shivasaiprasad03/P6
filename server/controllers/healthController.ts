@@ -13,7 +13,7 @@ export function getHealth(_req: Request, res: Response): void {
     status: 'ok',
     service: 'breathesafe',
     timestamp: new Date().toISOString(),
-    aiMode: config.geminiEnabled ? 'gemini-genai' : 'local-intelligence',
+    aiMode: config.geminiEnabled ? 'gemini' : 'rules',
     caches: {
       airQuality: airQualityCache.stats(),
       citySearch: citySearchCache.stats(),

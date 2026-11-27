@@ -1,80 +1,64 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { AirQualityReport, CityLocation } from '../../shared/types.js';
-import { fetchAirQualityApi, IS_STANDALONE } from '../lib/apiClient.js';
+import { airQualityStreamUrl, fetchAirQualityApi, IS_STANDALONE } from '../lib/apiClient.js';
 
-const POLL_INTERVAL_MS = 60_000;
+const STANDALONE_POLL_MS = 60_000;
 
 /**
- * Keeps the report fresh while `enabled` is true: subscribes to the server's SSE stream,
- * or polls Open-Meteo every minute in the static build. Also tracks seconds since the last update.
+ * Keeps the report fresh while `enabled`: subscribes to the server's Server-Sent Events
+ * stream, or polls Open-Meteo once a minute in the static build. Returns when the last
+ * update arrived (a timestamp, so the whole page does not re-render every second).
  */
-export function useLiveAirQualityStream(params: {
+export function useLiveAirQualityStream({
+  city,
+  enabled,
+  onReport,
+}: {
   city: CityLocation;
   enabled: boolean;
   onReport: (report: AirQualityReport) => void;
 }) {
-  const { city, enabled, onReport } = params;
-  const [secondsSinceSync, setSecondsSinceSync] = useState(0);
+  const [lastSyncedAt, setLastSyncedAt] = useState(() => Date.now());
+  const resetSyncClock = useCallback(() => setLastSyncedAt(Date.now()), []);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setSecondsSinceSync((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    if (!enabled) return;
 
-  useEffect(() => {
-    if (!enabled || !IS_STANDALONE) return;
-    let active = true;
-    const timer = setInterval(() => {
-      fetchAirQualityApi(city)
-        .then((report) => {
-          if (!active) return;
-          onReport(report);
-          setSecondsSinceSync(0);
-        })
-        .catch(() => {
-          // Keep showing the last good reading; the next poll will retry.
-        });
-    }, POLL_INTERVAL_MS);
-    return () => {
-      active = false;
-      clearInterval(timer);
+    const deliver = (report: AirQualityReport) => {
+      onReport(report);
+      setLastSyncedAt(Date.now());
     };
-  }, [city, enabled, onReport]);
 
-  useEffect(() => {
-    if (!enabled || IS_STANDALONE || typeof EventSource === 'undefined') {
-      return;
+    if (IS_STANDALONE) {
+      let active = true;
+      const timer = setInterval(() => {
+        fetchAirQualityApi(city)
+          .then((report) => active && deliver(report))
+          .catch(() => {
+            // Keep showing the last good reading; the next poll retries.
+          });
+      }, STANDALONE_POLL_MS);
+      return () => {
+        active = false;
+        clearInterval(timer);
+      };
     }
 
-    const query = new URLSearchParams({
-      lat: String(city.latitude),
-      lon: String(city.longitude),
-      name: city.name,
-      country: city.country,
-    });
-    const stream = new EventSource(`/api/air-quality/stream?${query.toString()}`);
-
-    const handleAirQuality = (event: MessageEvent<string>) => {
+    if (typeof EventSource === 'undefined') return;
+    const stream = new EventSource(airQualityStreamUrl(city));
+    const onMessage = (event: MessageEvent<string>) => {
       try {
-        const liveReport = JSON.parse(event.data) as AirQualityReport;
-        onReport(liveReport);
-        setSecondsSinceSync(0);
+        deliver(JSON.parse(event.data) as AirQualityReport);
       } catch {
-        // Ignore malformed SSE event frames
+        // Ignore a malformed frame; the next one replaces it.
       }
     };
-
-    stream.addEventListener('air-quality', handleAirQuality as EventListener);
+    stream.addEventListener('air-quality', onMessage as EventListener);
     return () => {
-      stream.removeEventListener('air-quality', handleAirQuality as EventListener);
+      stream.removeEventListener('air-quality', onMessage as EventListener);
       stream.close();
     };
   }, [city, enabled, onReport]);
 
-  return {
-    secondsSinceSync,
-    resetSyncClock: () => setSecondsSinceSync(0),
-  };
+  return { lastSyncedAt, resetSyncClock };
 }

@@ -32,6 +32,10 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
           <strong>Effect:</strong> {message.impactHighlight}
         </p>
       )}
+
+      {message.engine && (
+        <p className="msg-source">{message.engine === 'gemini' ? 'Answered by Gemini' : 'Rule-based answer'}</p>
+      )}
     </div>
   );
 }

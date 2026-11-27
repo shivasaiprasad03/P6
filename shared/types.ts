@@ -1,3 +1,31 @@
+import type { z } from 'zod';
+import type { ActionId } from './actions.js';
+import type {
+  budgetTierSchema,
+  chatTurnSchema,
+  cityLocationSchema,
+  communityRoleSchema,
+  commuteModeSchema,
+  cookingFuelSchema,
+  homeTypeSchema,
+  householdProfileSchema,
+  vulnerableGroupSchema,
+} from './schemas.js';
+
+// ── Inputs (derived from the Zod schemas so the two can never drift) ────────
+
+export type VulnerableGroup = z.infer<typeof vulnerableGroupSchema>;
+export type HomeType = z.infer<typeof homeTypeSchema>;
+export type CookingFuel = z.infer<typeof cookingFuelSchema>;
+export type CommuteMode = z.infer<typeof commuteModeSchema>;
+export type CommunityRole = z.infer<typeof communityRoleSchema>;
+export type BudgetTier = z.infer<typeof budgetTierSchema>;
+export type HouseholdProfile = z.infer<typeof householdProfileSchema>;
+export type CityLocation = z.infer<typeof cityLocationSchema>;
+export type ChatTurn = z.infer<typeof chatTurnSchema>;
+
+// ── Air quality ─────────────────────────────────────────────────────────────
+
 export type AqiSeverity =
   | 'good'
   | 'moderate'
@@ -6,53 +34,10 @@ export type AqiSeverity =
   | 'very_unhealthy'
   | 'hazardous';
 
-export type VulnerableGroup =
-  | 'infants'
-  | 'children'
-  | 'elderly'
-  | 'asthma'
-  | 'pregnant'
-  | 'outdoor_workers';
-
-export type HomeType = 'apartment' | 'independent_house' | 'shared_housing';
-
-export type CookingFuel = 'gas' | 'induction_electric' | 'biomass_solid';
-
-export type CommuteMode =
-  | 'car_petrol_diesel'
-  | 'car_ev_hybrid'
-  | 'public_transit'
-  | 'two_wheeler'
-  | 'walk_cycle'
-  | 'remote';
-
-export type CommunityRole = 'family' | 'school_pta' | 'neighborhood_rwa';
-
-export type BudgetTier = 'low_cost' | 'moderate' | 'flexible';
-
-export interface HouseholdProfile {
-  householdSize: number;
-  vulnerableGroups: VulnerableGroup[];
-  homeType: HomeType;
-  hasHepaPurifier: boolean;
-  cookingFuel: CookingFuel;
-  commuteMode: CommuteMode;
-  dailyCommuteKm: number;
-  communityRole: CommunityRole;
-  budgetTier: BudgetTier;
-}
-
-export interface CityLocation {
-  name: string;
-  country: string;
-  admin1?: string;
-  latitude: number;
-  longitude: number;
-  timezone?: string;
-}
-
 export interface HourlyAirPoint {
+  /** UTC instant, ISO-8601. */
   time: string;
+  /** Hour in the city's local time, e.g. "3 PM". */
   hourLabel: string;
   usAqi: number;
   pm25: number;
@@ -62,6 +47,8 @@ export interface HourlyAirPoint {
 }
 
 export interface SafeOutdoorWindow {
+  /** UTC instant of the first hour in the window. */
+  startTime: string;
   startLabel: string;
   endLabel: string;
   avgAqi: number;
@@ -85,46 +72,34 @@ export interface WeatherConditions {
   conditionIcon: 'haze' | 'fog' | 'cloudy' | 'clear' | 'rain';
 }
 
-export interface NearbyStationReading {
-  id: string;
-  name: string;
-  zoneType: 'residential' | 'traffic' | 'park' | 'industrial' | 'school_zone';
+export interface CurrentAirQuality {
   usAqi: number;
   pm25: number;
+  pm10: number;
+  no2: number;
+  ozone: number;
+  co: number;
+  so2: number;
   severity: AqiSeverity;
-  distanceKm: number;
-  /** Relative map coordinates (0..100) for pure-SVG interactive station map */
-  mapX: number;
-  mapY: number;
+  label: string;
+  cigaretteEquivalentPerDay: number;
+  whoPm25Multiple: number;
 }
 
 export interface AirQualityReport {
   location: CityLocation;
   fetchedAt: string;
-  source: 'open-meteo-live' | 'cached-live' | 'winter-smog-fallback';
-  current: {
-    usAqi: number;
-    pm25: number;
-    pm10: number;
-    no2: number;
-    ozone: number;
-    co: number;
-    so2: number;
-    severity: AqiSeverity;
-    label: string;
-    cigaretteEquivalentPerDay: number;
-    whoPm25Multiple: number;
-  };
-  weather: WeatherConditions;
-  nearbyStations: NearbyStationReading[];
-  globalRankEstimate: {
-    rank: number;
-    percentileNote: string;
-  };
+  /** `sample` means Open-Meteo was unreachable and the values are typical, not measured. */
+  source: 'live' | 'cached' | 'sample';
+  current: CurrentAirQuality;
+  /** Null when the weather service could not be reached. */
+  weather: WeatherConditions | null;
   hourlyForecast: HourlyAirPoint[];
   safestWindow: SafeOutdoorWindow;
   inversionRisk: InversionRisk;
 }
+
+// ── Actions & impact ────────────────────────────────────────────────────────
 
 export type RecommendationCategory =
   | 'low_emission_routine'
@@ -134,16 +109,32 @@ export type RecommendationCategory =
 
 export type ImpactEffort = 'quick_win' | 'daily_habit' | 'lifestyle_shift';
 
-export interface ActionImpact {
-  pm25ExposureReductionPct: number;
-  weeklyCo2SavedKg: number;
-  weeklyPm25AvoidedGrams: number;
-  personalHealthExplanation: string;
-  communityScaleExplanation: string;
+/** One habit or swap, with the reference figures every impact number is derived from. */
+export interface ActionDefinition {
+  id: ActionId;
+  category: RecommendationCategory;
+  title: string;
+  description: string;
+  whyItWorks: string;
+  /** Share of the household's indoor PM2.5 dose removed by this action alone. */
+  exposureReductionPct: number;
+  monthlyCo2SavedKg: number;
+  monthlyPm25AvoidedGrams: number;
+  /** Positive = costs money each month, negative = saves money. */
+  monthlyCostDeltaUsd: number;
+  /** Commute actions scale with distance and do nothing for people who already travel cleanly. */
+  scalesWithCommute?: boolean;
+}
+
+/** Figures for one action after tailoring to a household. */
+export interface ActionFigures {
+  exposureReductionPct: number;
+  monthlyCo2SavedKg: number;
+  monthlyPm25AvoidedGrams: number;
 }
 
 export interface ActionRecommendation {
-  id: string;
+  actionId: ActionId;
   category: RecommendationCategory;
   title: string;
   summary: string;
@@ -151,58 +142,53 @@ export interface ActionRecommendation {
   effort: ImpactEffort;
   estimatedCost: string;
   bestTimeWindow: string;
-  impact: ActionImpact;
+  figures: ActionFigures;
+  personalImpact: string;
+  communityImpact: string;
 }
+
+export type AdvisorEngine = 'gemini' | 'rules';
 
 export interface ActionPlanResponse {
   generatedAt: string;
-  engine: 'gemini-genai' | 'local-intelligence';
+  engine: AdvisorEngine;
   modelUsed: string;
   cached: boolean;
   headline: string;
-  winterSmogBriefing: string;
-  urgentAlerts: string[];
+  briefing: string;
+  alerts: string[];
   recommendations: ActionRecommendation[];
-  communityMessageTemplate: string;
+  communityMessage: string;
   safetyDisclaimer: string;
-}
-
-export interface ChatTurn {
-  role: 'user' | 'assistant';
-  content: string;
 }
 
 export interface ChatResponse {
   reply: string;
-  engine: 'gemini-genai' | 'local-intelligence';
+  engine: AdvisorEngine;
   modelUsed: string;
   keyTakeaways: string[];
   impactHighlight: string;
   safetyDisclaimer: string;
 }
 
-export interface PledgeActionItem {
-  id: string;
-  category: RecommendationCategory;
-  title: string;
-  description: string;
-  pm25ExposureReductionPct: number;
-  monthlyCo2SavedKg: number;
-  monthlyPm25AvoidedGrams: number;
-  monthlyCostDeltaUsd: number;
-  whyItWorks: string;
+export interface ImpactSimulationRequest {
+  selectedActionIds: ActionId[];
+  baselinePm25: number;
+  profile: HouseholdProfile;
+  communityHouseholds: number;
 }
 
 export interface ImpactSimulationResult {
   selectedCount: number;
-  combinedPm25ExposureReductionPct: number;
-  estimatedIndoorPm25After: number;
+  combinedExposureReductionPct: number;
+  indoorPm25Before: number;
+  indoorPm25After: number;
   avoidedCigarettesPerMonth: number;
   householdMonthlyCo2SavedKg: number;
   householdMonthlyPm25AvoidedGrams: number;
   communityHouseholds: number;
   communityMonthlyCo2SavedKg: number;
   communityMonthlyPm25AvoidedKg: number;
-  equivalentTreesPlanted: number;
-  estimatedMonthlySavingsUsd: number;
+  equivalentTrees: number;
+  monthlySavingsUsd: number;
 }

@@ -1,3 +1,8 @@
+/**
+ * Data access for the UI. Talks to the Express API, or, in the static build
+ * (`VITE_STANDALONE=true`), to the in-browser engine, which is loaded lazily so the
+ * server build never ships it.
+ */
 import type {
   ActionPlanResponse,
   AirQualityReport,
@@ -5,141 +10,84 @@ import type {
   ChatTurn,
   CityLocation,
   HouseholdProfile,
-  ImpactSimulationResult,
 } from '../../shared/types.js';
 
-const DEFAULT_REQUEST_TIMEOUT_MS = 12_000;
+/** Longer than the server's Gemini timeout, so a slow plan is not cut off by the browser. */
+const REQUEST_TIMEOUT_MS = 45_000;
 
-/** True in the static build, where everything runs in the browser instead of the API server. */
 export const IS_STANDALONE = import.meta.env.VITE_STANDALONE === 'true';
 
-const loadBrowserEngine = () => import('./browserEngine.js');
+const browserEngine = () => import('./browserEngine.js');
 
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+async function requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
-
-  const callerSignal = init?.signal;
-  const onCallerAbort = () => controller.abort();
-  if (callerSignal) {
-    if (callerSignal.aborted) {
-      controller.abort();
-    } else {
-      callerSignal.addEventListener('abort', onCallerAbort, { once: true });
-    }
-  }
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const abortFromCaller = () => controller.abort();
+  init.signal?.addEventListener('abort', abortFromCaller, { once: true });
+  if (init.signal?.aborted) controller.abort();
 
   try {
     const response = await fetch(url, {
       ...init,
       signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(init?.headers ?? {}),
-      },
+      headers: { 'Content-Type': 'application/json', ...init.headers },
     });
-
-    const payload = (await response.json().catch(() => ({}))) as {
-      message?: string;
-      error?: string;
-    };
-
+    const payload = (await response.json().catch(() => ({}))) as { message?: string };
     if (!response.ok) {
       throw new Error(payload.message ?? `Request failed (${response.status})`);
     }
-
     return payload as T;
   } finally {
-    clearTimeout(timeout);
-    callerSignal?.removeEventListener('abort', onCallerAbort);
+    clearTimeout(timer);
+    init.signal?.removeEventListener('abort', abortFromCaller);
   }
 }
 
-export interface HealthStatus {
-  status: string;
-  aiMode: 'gemini-genai' | 'local-intelligence';
-}
-
-/** Fetches backend health status and active AI engine mode. */
-export function fetchHealth(): Promise<HealthStatus> {
-  if (IS_STANDALONE) {
-    return Promise.resolve({ status: 'ok', aiMode: 'local-intelligence' });
-  }
-  return requestJson<HealthStatus>('/api/health');
-}
-
-/** Searches global cities matching `query` via the geocoding endpoint. */
-export function searchCitiesApi(
-  query: string,
-  signal?: AbortSignal,
-): Promise<{ cities: CityLocation[] }> {
-  if (IS_STANDALONE) {
-    return loadBrowserEngine()
-      .then((engine) => engine.searchCitiesLocal(query))
-      .then((cities) => ({ cities }));
-  }
-  const params = new URLSearchParams({ q: query });
-  return requestJson<{ cities: CityLocation[] }>(`/api/cities/search?${params.toString()}`, {
-    signal,
-  });
-}
-
-/** Fetches live air quality, weather, nearby stations, and 24-hour forecast for `location`. */
-export function fetchAirQualityApi(location: CityLocation): Promise<AirQualityReport> {
-  if (IS_STANDALONE) {
-    return loadBrowserEngine().then((engine) => engine.fetchAirQualityLocal(location));
-  }
-  const params = new URLSearchParams({
+function locationQuery(location: CityLocation): string {
+  return new URLSearchParams({
     lat: String(location.latitude),
     lon: String(location.longitude),
     name: location.name,
     country: location.country,
-  });
-  return requestJson<AirQualityReport>(`/api/air-quality?${params.toString()}`);
+  }).toString();
 }
 
-/** Generates a daily action plan for the given location and household profile. */
-export function generateActionPlanApi(params: {
+export function airQualityStreamUrl(location: CityLocation): string {
+  return `/api/air-quality/stream?${locationQuery(location)}`;
+}
+
+export async function searchCitiesApi(query: string, signal?: AbortSignal): Promise<CityLocation[]> {
+  if (IS_STANDALONE) return (await browserEngine()).searchCitiesLocal(query);
+  const params = new URLSearchParams({ q: query });
+  const data = await requestJson<{ cities: CityLocation[] }>(`/api/cities/search?${params}`, { signal });
+  return data.cities;
+}
+
+export async function fetchAirQualityApi(location: CityLocation): Promise<AirQualityReport> {
+  if (IS_STANDALONE) return (await browserEngine()).fetchAirQualityLocal(location);
+  return requestJson<AirQualityReport>(`/api/air-quality?${locationQuery(location)}`);
+}
+
+export async function generateActionPlanApi(params: {
   location: CityLocation;
   profile: HouseholdProfile;
   focusNote?: string;
 }): Promise<ActionPlanResponse> {
-  if (IS_STANDALONE) {
-    return loadBrowserEngine().then((engine) => engine.generateActionPlanLocal(params));
-  }
+  if (IS_STANDALONE) return (await browserEngine()).generateActionPlanLocal(params);
   return requestJson<ActionPlanResponse>('/api/advisor/plan', {
     method: 'POST',
     body: JSON.stringify(params),
   });
 }
 
-/** Sends a question and recent turns to the advisor, grounded in live readings and the household profile. */
-export function sendAdvisorChatApi(params: {
+export async function sendAdvisorChatApi(params: {
   location: CityLocation;
   profile: HouseholdProfile;
   message: string;
   history: ChatTurn[];
 }): Promise<ChatResponse> {
-  if (IS_STANDALONE) {
-    return loadBrowserEngine().then((engine) => engine.sendAdvisorChatLocal(params));
-  }
+  if (IS_STANDALONE) return (await browserEngine()).sendAdvisorChatLocal(params);
   return requestJson<ChatResponse>('/api/advisor/chat', {
-    method: 'POST',
-    body: JSON.stringify(params),
-  });
-}
-
-/** Computes household exposure reduction and neighborhood-scale emissions savings. */
-export function simulateImpactApi(params: {
-  selectedActionIds: string[];
-  baselinePm25: number;
-  householdSize: number;
-  communityHouseholds: number;
-}): Promise<ImpactSimulationResult> {
-  if (IS_STANDALONE) {
-    return loadBrowserEngine().then((engine) => engine.simulateImpactLocal(params));
-  }
-  return requestJson<ImpactSimulationResult>('/api/impact/simulate', {
     method: 'POST',
     body: JSON.stringify(params),
   });

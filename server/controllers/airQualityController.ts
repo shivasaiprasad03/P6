@@ -10,8 +10,8 @@ import { logger } from '../utils/logger.js';
 function parseLocationQuery(query: Request['query']): CityLocation {
   const parsed = airQualityQuerySchema.parse(query);
   return {
-    name: parsed.name ?? 'Selected Location',
-    country: parsed.country ?? 'Urban Area',
+    name: parsed.name || 'Selected location',
+    country: parsed.country || 'Unknown',
     latitude: parsed.lat,
     longitude: parsed.lon,
   };

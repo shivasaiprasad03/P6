@@ -3,10 +3,6 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  define: {
-    // Shared server modules read `process.env`; in the browser there is none, so use an empty object.
-    'process.env': '{}',
-  },
   server: {
     port: 5173,
     proxy: {

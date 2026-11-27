@@ -1,4 +1,4 @@
-import type { ActionRecommendation, RecommendationCategory } from '../../shared/types.js';
+import type { ActionFigures, ActionRecommendation, RecommendationCategory } from '../../shared/types.js';
 
 export const CATEGORY_META: Record<RecommendationCategory, { label: string }> = {
   low_emission_routine: { label: 'Routine' },
@@ -13,24 +13,29 @@ const EFFORT_LABELS = {
   lifestyle_shift: 'Bigger change',
 } as const;
 
-interface RecommendationCardProps {
-  recommendation: ActionRecommendation;
+/** Short figure labels, e.g. "−45% your PM2.5 dose", "+8 kg CO₂ a month". */
+export function figureLabels(figures: ActionFigures): string[] {
+  const labels: string[] = [];
+  if (figures.exposureReductionPct > 0) labels.push(`−${figures.exposureReductionPct}% your PM2.5 dose`);
+  if (figures.monthlyCo2SavedKg > 0) labels.push(`−${figures.monthlyCo2SavedKg} kg CO₂ a month`);
+  if (figures.monthlyCo2SavedKg < 0) labels.push(`+${-figures.monthlyCo2SavedKg} kg CO₂ a month`);
+  if (figures.monthlyPm25AvoidedGrams > 0) labels.push(`−${figures.monthlyPm25AvoidedGrams} g PM2.5 emitted a month`);
+  return labels.length > 0 ? labels : ['No measurable change for your household'];
 }
 
 /**
- * One recommendation: what to do and when, the steps, and the estimated effect
- * on your own exposure and on local emissions.
+ * One recommendation: what to do and when, the steps, and the estimated effect on your
+ * own exposure and on local emissions. Figures come from the shared action catalog.
  */
-export function RecommendationCard({ recommendation }: RecommendationCardProps) {
-  const meta = CATEGORY_META[recommendation.category];
-  const { impact } = recommendation;
+export function RecommendationCard({ recommendation }: { recommendation: ActionRecommendation }) {
+  const { category, effort, estimatedCost, figures } = recommendation;
 
   return (
     <article className="rec">
       <p className="rec-meta">
-        <span className="rec-category">{meta.label}</span>
-        <span>{EFFORT_LABELS[recommendation.effort]}</span>
-        <span>{recommendation.estimatedCost}</span>
+        <span className="rec-category">{CATEGORY_META[category].label}</span>
+        <span>{EFFORT_LABELS[effort]}</span>
+        <span>{estimatedCost}</span>
       </p>
 
       <h3 className="rec-title">{recommendation.title}</h3>
@@ -45,27 +50,19 @@ export function RecommendationCard({ recommendation }: RecommendationCardProps) 
         ))}
       </ol>
 
-      <div className="rec-impact" aria-label={`Estimated effect of ${recommendation.title}`}>
+      <div className="rec-impact" aria-label={`Estimated effect of: ${recommendation.title}`}>
         <ul className="rec-figures">
-          <li>
-            <span className="figure">−{impact.pm25ExposureReductionPct}%</span> PM2.5 exposure
-          </li>
-          {impact.weeklyCo2SavedKg > 0 && (
-            <li>
-              <span className="figure">−{impact.weeklyCo2SavedKg} kg</span> CO₂ a week
+          {figureLabels(figures).map((label) => (
+            <li key={label}>
+              <span className="figure">{label}</span>
             </li>
-          )}
-          {impact.weeklyPm25AvoidedGrams > 0 && (
-            <li>
-              <span className="figure">−{impact.weeklyPm25AvoidedGrams} g</span> PM2.5 a week
-            </li>
-          )}
+          ))}
         </ul>
         <p>
-          <strong>For you:</strong> {impact.personalHealthExplanation}
+          <strong>For you:</strong> {recommendation.personalImpact}
         </p>
         <p>
-          <strong>For your area:</strong> {impact.communityScaleExplanation}
+          <strong>For your area:</strong> {recommendation.communityImpact}
         </p>
       </div>
     </article>

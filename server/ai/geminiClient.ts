@@ -1,4 +1,4 @@
-import { NETWORK_LIMITS, UPSTREAM_ORIGINS } from '../config/constants.js';
+import { GEMINI_API_BASE, NETWORK_LIMITS } from '../config/constants.js';
 import { getServerConfig } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import type {
@@ -55,13 +55,14 @@ export class GeminiStructuredClient implements StructuredLlmClient {
       return null;
     }
 
-    const endpoint = `${UPSTREAM_ORIGINS.geminiApiBase}/${config.geminiModel}:generateContent`;
+    const endpoint = `${GEMINI_API_BASE}/${config.geminiModel}:generateContent`;
     const body = JSON.stringify({
       systemInstruction: { parts: [{ text: request.systemInstruction }] },
       contents: [{ role: 'user', parts: [{ text: request.userPrompt }] }],
       generationConfig: {
         temperature: 0.35,
-        maxOutputTokens: 2048,
+        // Gemini 2.5 counts thinking tokens against this limit; leave room so JSON is not truncated.
+        maxOutputTokens: 8192,
         responseMimeType: 'application/json',
       },
     });

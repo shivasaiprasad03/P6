@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ActionId } from '../shared/actions.js';
 import { ActionPlanView } from './components/ActionPlanView.js';
 import { AdvisorChat } from './components/AdvisorChat.js';
 import { AirQualityOverview } from './components/AirQualityOverview.js';
@@ -9,6 +10,14 @@ import { ImpactSimulator } from './components/ImpactSimulator.js';
 import { LocationSelector } from './components/LocationSelector.js';
 import { useAirQualityDashboard } from './hooks/useAirQualityDashboard.js';
 import { useThemePreferences } from './hooks/useThemePreferences.js';
+
+/** Calculator selection before any plan has loaded. */
+const DEFAULT_CALCULATOR_ACTIONS: readonly ActionId[] = [
+  'diy-box-filter',
+  'smart-ventilation',
+  'transit-carpool-swap',
+  'zero-burn-anti-idling',
+];
 
 /**
  * Application shell: masthead with section tabs, the city picker, and the three sections
@@ -59,26 +68,26 @@ export function App() {
                 report={dashboard.report}
                 loading={dashboard.loadingAqi}
                 liveEnabled={dashboard.liveEnabled}
-                secondsSinceSync={dashboard.secondsSinceSync}
+                lastSyncedAt={dashboard.lastSyncedAt}
                 isFavorite={dashboard.isFavorite}
                 onToggleLive={dashboard.toggleLive}
-                onRefresh={() => {
-                  void dashboard.refreshAqi();
-                }}
+                onRefresh={dashboard.refreshAqi}
                 onToggleFavorite={dashboard.toggleFavorite}
               />
 
               <div className="plan-layout">
-                <ActionPlanView plan={dashboard.plan} loading={dashboard.loadingPlan} />
+                <ActionPlanView
+                  plan={dashboard.plan}
+                  loading={dashboard.loadingPlan}
+                  onOpenCalculator={() => setActiveTab('simulator')}
+                />
                 <HouseholdProfileForm
                   profile={dashboard.profile}
                   focusNote={dashboard.focusNote}
                   generating={dashboard.loadingPlan}
                   onChangeProfile={dashboard.setProfile}
                   onChangeFocusNote={dashboard.setFocusNote}
-                  onGeneratePlan={() => {
-                    void dashboard.regeneratePlan();
-                  }}
+                  onGeneratePlan={dashboard.regeneratePlan}
                 />
               </div>
             </div>
@@ -87,9 +96,12 @@ export function App() {
           {activeTab === 'simulator' && (
             <div id="panel-simulator" role="tabpanel" aria-labelledby="tab-simulator">
               <ImpactSimulator
-                baselinePm25={dashboard.report?.current.pm25 ?? 120}
-                householdSize={dashboard.profile.householdSize}
+                baselinePm25={dashboard.report?.current.pm25 ?? 0}
+                profile={dashboard.profile}
                 cityName={dashboard.selectedCity.name}
+                initialSelectedIds={
+                  dashboard.plan?.recommendations.map((r) => r.actionId) ?? DEFAULT_CALCULATOR_ACTIONS
+                }
               />
             </div>
           )}
@@ -97,6 +109,7 @@ export function App() {
           {activeTab === 'chat' && (
             <div id="panel-chat" role="tabpanel" aria-labelledby="tab-chat">
               <AdvisorChat
+                key={`${dashboard.selectedCity.latitude},${dashboard.selectedCity.longitude}`}
                 location={dashboard.selectedCity}
                 profile={dashboard.profile}
                 currentAqi={dashboard.report?.current.usAqi}

@@ -19,13 +19,13 @@ This describes how the API server and the static build handle requests, input an
 - **Server-Side Secret Isolation**: `GEMINI_API_KEY` is read exclusively on the server via `process.env`, sent via the `x-goog-api-key` HTTP header (never in query strings or browser bundles), and excluded from git via `.gitignore`.
 - **Prompt-Injection Defense**:
   - User-supplied focus notes and chat messages are scanned by `detectPromptInjection` and isolated inside `<user_focus_note>` / `<user_question>` delimiters with explicit system instructions treating them as untrusted data.
-  - All GenAI JSON outputs are validated against strict Zod output schemas (`aiPlanPayloadSchema`, `aiChatPayloadSchema`) before being served to clients.
-- **SSRF Prevention**: Outbound HTTP calls are locked to hardcoded HTTPS origins (`geocoding-api.open-meteo.com`, `air-quality-api.open-meteo.com`, `generativelanguage.googleapis.com`) with validated model names and strict `AbortController` timeouts.
+  - All GenAI JSON outputs are validated against strict Zod output schemas (`aiPlanPayloadSchema`, `aiChatPayloadSchema`) before being served to clients. Recommendations must name an action from the catalog (`shared/actions.ts`), and their impact figures are attached from that catalog on the server, so model output cannot change the numbers users see.
+- **SSRF Prevention**: Outbound HTTP calls are locked to hardcoded HTTPS origins (`geocoding-api.open-meteo.com`, `air-quality-api.open-meteo.com`, `api.open-meteo.com` in `shared/airQuality/openMeteo.ts`; `generativelanguage.googleapis.com` in `server/config/constants.ts`) with validated model names and strict `AbortController` timeouts. Only coordinates and a city name are sent to Open-Meteo.
 - **Safety Boundaries**: Medical/emergency disclaimers accompany all generated advice; the assistant never diagnoses conditions or advises stopping prescribed medications.
 
 ## 4. Container Deployment Hardening
 - Multi-stage `Dockerfile` runs `npm ci --ignore-scripts`, prunes `devDependencies`, copies only compiled artifacts into a minimal Alpine Node image, runs as the non-root `node` user, and defines a built-in `HEALTHCHECK`.
 
 ## 5. Static build (Firebase Hosting)
-- The static build has no server and no secrets: it calls only the three public Open-Meteo endpoints, and plans and answers come from the rule-based engine in the browser. Gemini is never used in this mode.
+- The static build has no server and no secrets: it calls only the three public Open-Meteo endpoints, and plans and answers come from the rule-based engine in the browser (`shared/advisor/`). Gemini is never used in this mode, because an API key must not be shipped to the browser.
 - `firebase.json` sets a Content Security Policy that limits `connect-src` to those Open-Meteo origins, plus `X-Frame-Options: DENY`, `nosniff`, a strict referrer policy and a restrictive `Permissions-Policy`.

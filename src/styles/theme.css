@@ -1348,6 +1348,12 @@ select {
   color: var(--muted);
 }
 
+.msg-source {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .chat .notice {
   margin: 0 20px 12px;
 }

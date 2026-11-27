@@ -1,14 +1,17 @@
-import type { PledgeActionItem } from '../../shared/types.js';
+import type { ActionDefinition, ActionFigures } from '../../shared/types.js';
+import { figureLabels } from './RecommendationCard.js';
 
-interface PledgeActionCardProps {
-  action: PledgeActionItem;
+interface ActionChoiceCardProps {
+  action: ActionDefinition;
+  /** The action's figures tailored to this household. */
+  figures: ActionFigures;
   checked: boolean;
-  onToggle: (id: string) => void;
+  onToggle: (id: ActionDefinition['id']) => void;
 }
 
 /** A selectable habit or swap in the impact calculator. */
-export function PledgeActionCard({ action, checked, onToggle }: PledgeActionCardProps) {
-  const checkboxId = `pledge-${action.id}`;
+export function ActionChoiceCard({ action, figures, checked, onToggle }: ActionChoiceCardProps) {
+  const checkboxId = `action-${action.id}`;
 
   return (
     <div className="pledge" data-selected={checked}>
@@ -25,9 +28,9 @@ export function PledgeActionCard({ action, checked, onToggle }: PledgeActionCard
         </label>
         <p className="pledge-desc">{action.description}</p>
         <p className="rec-meta">
-          <span className="rec-category">−{action.pm25ExposureReductionPct}% exposure</span>
-          {action.monthlyCo2SavedKg > 0 && <span>−{action.monthlyCo2SavedKg} kg CO₂/mo</span>}
-          <span>−{action.monthlyPm25AvoidedGrams} g PM2.5/mo</span>
+          {figureLabels(figures).map((label) => (
+            <span key={label}>{label}</span>
+          ))}
         </p>
         <p className="pledge-why">{action.whyItWorks}</p>
       </div>

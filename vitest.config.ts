@@ -8,6 +8,8 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.{ts,tsx}'],
     setupFiles: ['./tests/setup.ts'],
+    // Full-app jsdom tests can exceed the 5 s default under coverage instrumentation.
+    testTimeout: 20_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary'],
@@ -17,7 +19,6 @@ export default defineConfig({
         'server/index.ts',
         'shared/types.ts',
         'server/ai/llmClient.ts',
-        'server/ai/schemas.ts',
       ],
     },
   },

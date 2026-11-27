@@ -34,7 +34,7 @@ export function ForecastChart({ cityName, hourlyForecast, safestWindow }: Foreca
   const gridLines = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(yMax * f));
   const whoLimit = AIR_QUALITY_CONSTANTS.whoPm25Guideline24h;
 
-  const bestStart = hourlyForecast.findIndex((h) => h.hourLabel === safestWindow.startLabel);
+  const bestStart = hourlyForecast.findIndex((h) => h.time === safestWindow.startTime);
 
   return (
     <div className="panel">
