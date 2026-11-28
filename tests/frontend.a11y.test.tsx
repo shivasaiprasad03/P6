@@ -243,7 +243,7 @@ describe('BreatheSafe frontend accessibility and core user flows', () => {
     // Quick prompt & manual chat form submission
     const chatInput = screen.getByLabelText(/Ask a question about air quality/i);
     fireEvent.change(chatInput, { target: { value: 'How do I make a DIY air purifier?' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Send$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Send question$/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/MERV-13 furnace filters/i)).toBeInTheDocument();
@@ -306,7 +306,7 @@ describe('BreatheSafe frontend accessibility and core user flows', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(
         /This section failed to load/i,
       );
-      fireEvent.click(screen.getByRole('button', { name: /Reload View/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Try again/i }));
     } finally {
       consoleSpy.mockRestore();
     }

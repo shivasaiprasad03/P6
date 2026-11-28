@@ -138,6 +138,9 @@ export function ActionPlanView({ plan, loading, onOpenCalculator }: ActionPlanVi
           </button>
         </div>
         <pre className="share-text">{plan.communityMessage}</pre>
+        <p className="sr-only" role="status">
+          {copied ? 'Message copied to the clipboard.' : ''}
+        </p>
       </div>
 
       <p className="fineprint">{plan.safetyDisclaimer}</p>

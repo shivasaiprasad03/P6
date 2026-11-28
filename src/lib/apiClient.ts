@@ -13,7 +13,7 @@ import type {
 } from '../../shared/types.js';
 
 /** Longer than the server's Gemini timeout, so a slow plan is not cut off by the browser. */
-const REQUEST_TIMEOUT_MS = 45_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 
 export const IS_STANDALONE = import.meta.env.VITE_STANDALONE === 'true';
 

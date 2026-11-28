@@ -52,6 +52,37 @@ export async function getAirQualityHandler(
   }
 }
 
+/** Open SSE streams per client IP, used to cap long-lived connections. */
+const openStreams = new Map<string, number>();
+let openStreamsTotal = 0;
+
+function clientKey(req: Request): string {
+  return req.ip || req.socket.remoteAddress || 'unknown';
+}
+
+/** Reserves a stream slot for the client; returns false when a cap is reached. */
+function acquireStreamSlot(key: string): boolean {
+  const current = openStreams.get(key) ?? 0;
+  if (current >= SSE_CONFIG.maxStreamsPerClient || openStreamsTotal >= SSE_CONFIG.maxStreamsTotal) {
+    return false;
+  }
+  openStreams.set(key, current + 1);
+  openStreamsTotal += 1;
+  return true;
+}
+
+function releaseStreamSlot(key: string): void {
+  const remaining = (openStreams.get(key) ?? 1) - 1;
+  if (remaining > 0) openStreams.set(key, remaining);
+  else openStreams.delete(key);
+  openStreamsTotal = Math.max(0, openStreamsTotal - 1);
+}
+
+/** Number of currently open SSE streams (exposed for tests and health telemetry). */
+export function openStreamCount(): number {
+  return openStreamsTotal;
+}
+
 function writeSseEvent(res: Response, event: string, payload: unknown): void {
   if (res.writableEnded) return;
   res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
@@ -69,11 +100,34 @@ export async function streamAirQualityHandler(
 ): Promise<void> {
   try {
     const location = parseLocationQuery(req.query);
+    const isServerless = getServerConfig().isVercel;
+
+    // Long-lived streams are capped per client before any upstream work is done.
+    const key = clientKey(req);
+    if (!isServerless && !acquireStreamSlot(key)) {
+      res.setHeader('Retry-After', String(Math.ceil(SSE_CONFIG.serverlessRetryMs / 1000)));
+      res.status(429).json({
+        error: 'too_many_streams',
+        message: 'Too many live updates are open. Close another tab and try again.',
+      });
+      return;
+    }
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
+
+    const timers: ReturnType<typeof setInterval>[] = [];
+    let closed = false;
+    // Registered before the first await, so a client that leaves early still frees its slot.
+    req.on('close', () => {
+      closed = true;
+      timers.forEach(clearInterval);
+      if (!isServerless) releaseStreamSlot(key);
+      if (!res.writableEnded) res.end();
+    });
 
     const pushUpdate = async () => {
       try {
@@ -90,7 +144,7 @@ export async function streamAirQualityHandler(
 
     await pushUpdate();
 
-    if (getServerConfig().isVercel) {
+    if (isServerless) {
       if (!res.writableEnded) {
         res.write(`retry: ${SSE_CONFIG.serverlessRetryMs}\n\n`);
         res.end();
@@ -98,22 +152,15 @@ export async function streamAirQualityHandler(
       return;
     }
 
-    const refreshTimer = setInterval(() => {
-      void pushUpdate();
-    }, SSE_CONFIG.refreshIntervalMs);
-    const heartbeatTimer = setInterval(() => {
-      if (!res.writableEnded) {
-        res.write(': keep-alive\n\n');
-      }
-    }, SSE_CONFIG.heartbeatIntervalMs);
-
-    req.on('close', () => {
-      clearInterval(refreshTimer);
-      clearInterval(heartbeatTimer);
-      if (!res.writableEnded) {
-        res.end();
-      }
-    });
+    if (closed) return;
+    timers.push(
+      setInterval(() => {
+        void pushUpdate();
+      }, SSE_CONFIG.refreshIntervalMs),
+      setInterval(() => {
+        if (!res.writableEnded) res.write(': keep-alive\n\n');
+      }, SSE_CONFIG.heartbeatIntervalMs),
+    );
   } catch (err) {
     next(err);
   }

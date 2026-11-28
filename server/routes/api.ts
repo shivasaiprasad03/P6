@@ -35,7 +35,7 @@ export function createApiRouter(options: ApiRouterOptions = {}): Router {
       'AI advisor rate limit reached. Please wait a few seconds before sending another request.',
   });
 
-  router.get('/health', getHealth);
+  router.get('/health', generalLimiter, getHealth);
   router.get('/cities/presets', generalLimiter, getPresetCities);
   router.get('/cities/search', generalLimiter, searchCitiesHandler);
   router.get('/air-quality', generalLimiter, getAirQualityHandler);

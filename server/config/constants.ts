@@ -9,7 +9,7 @@ export const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta
 /** Network timeout & retry limits. */
 export const NETWORK_LIMITS = {
   upstreamTimeoutMs: 4_500,
-  geminiTimeoutMs: 25_000,
+  geminiTimeoutMs: 40_000,
   geminiMaxRetries: 1,
   geminiRetryBaseMs: 350,
   jsonBodyLimit: '16kb',
@@ -36,6 +36,9 @@ export const SSE_CONFIG = {
   refreshIntervalMs: 45_000,
   heartbeatIntervalMs: 20_000,
   serverlessRetryMs: 45_000,
+  /** Open streams allowed per client IP, and in total, so idle tabs cannot exhaust sockets. */
+  maxStreamsPerClient: 4,
+  maxStreamsTotal: 500,
 } as const;
 
 /** Default allowed development origins when ALLOWED_ORIGINS is not set. */
@@ -44,4 +47,4 @@ export const DEFAULT_ALLOWED_ORIGINS =
 
 /** Safe regex allowlisting Gemini model identifiers (blocks path traversal). */
 export const SAFE_GEMINI_MODEL_PATTERN = /^[a-zA-Z0-9._-]{3,64}$/;
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-flash-lite-latest';

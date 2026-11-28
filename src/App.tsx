@@ -62,6 +62,7 @@ export function App() {
               id="panel-dashboard"
               role="tabpanel"
               aria-labelledby="tab-dashboard"
+              tabIndex={0}
               className="stack-lg"
             >
               <AirQualityOverview
@@ -94,7 +95,7 @@ export function App() {
           )}
 
           {activeTab === 'simulator' && (
-            <div id="panel-simulator" role="tabpanel" aria-labelledby="tab-simulator">
+            <div id="panel-simulator" role="tabpanel" aria-labelledby="tab-simulator" tabIndex={0}>
               <ImpactSimulator
                 baselinePm25={dashboard.report?.current.pm25 ?? 0}
                 profile={dashboard.profile}
@@ -107,7 +108,7 @@ export function App() {
           )}
 
           {activeTab === 'chat' && (
-            <div id="panel-chat" role="tabpanel" aria-labelledby="tab-chat">
+            <div id="panel-chat" role="tabpanel" aria-labelledby="tab-chat" tabIndex={0}>
               <AdvisorChat
                 key={`${dashboard.selectedCity.latitude},${dashboard.selectedCity.longitude}`}
                 location={dashboard.selectedCity}
@@ -123,8 +124,8 @@ export function App() {
         <div className="footer-inner page-width">
           <p>
             <strong>BreatheSafe</strong> · Readings and forecasts from{' '}
-            <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">
-              Open-Meteo
+            <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">
+              Open-Meteo<span className="sr-only"> (opens in a new tab)</span>
             </a>{' '}
             (CAMS air quality model). AQI follows the US EPA scale.
           </p>

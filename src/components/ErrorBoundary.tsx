@@ -20,8 +20,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     return { hasError: true };
   }
 
-  override componentDidCatch(_error: Error, _info: ErrorInfo): void {
-    // Error boundary isolates rendering errors without exposing internal traces to users
+  override componentDidCatch(error: Error, info: ErrorInfo): void {
+    // Details go to the developer console only; users see a plain recovery message.
+    if (import.meta.env.DEV) {
+      console.error('Section render failed', error, info.componentStack);
+    }
   }
 
   private handleReset = (): void => {
@@ -45,7 +48,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             onClick={this.handleReset}
           >
             <RefreshCw size={15} aria-hidden="true" />
-            Reload View
+            Try again
           </button>
         </section>
       );

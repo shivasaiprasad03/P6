@@ -30,6 +30,7 @@ export function AdvisorChat({ location, profile, currentAqi }: AdvisorChatProps)
     },
   ]);
   const nextIdRef = useRef(1);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +80,8 @@ export function AdvisorChat({ location, profile, currentAqi }: AdvisorChatProps)
       setError(err instanceof Error ? err.message : 'Could not get an answer. Please try again.');
     } finally {
       setSending(false);
+      // Return keyboard users to the question box, ready for a follow-up.
+      inputRef.current?.focus();
     }
   }
 
@@ -107,14 +110,14 @@ export function AdvisorChat({ location, profile, currentAqi }: AdvisorChatProps)
             <ChatMessageBubble key={msg.id} message={msg} />
           ))}
           {sending && (
-            <div className="msg msg-assistant" aria-busy="true">
+            <div className="msg msg-assistant">
               <span className="muted">Thinking…</span>
             </div>
           )}
         </div>
 
         {error && (
-          <div className="notice notice-error" role="alert">
+          <div id="advisor-chat-error" className="notice notice-error" role="alert">
             {error}
           </div>
         )}
@@ -125,7 +128,7 @@ export function AdvisorChat({ location, profile, currentAqi }: AdvisorChatProps)
               key={prompt}
               type="button"
               className="chip"
-              disabled={sending}
+              aria-disabled={sending}
               onClick={() => {
                 void submitQuestion(prompt);
               }}
@@ -145,21 +148,26 @@ export function AdvisorChat({ location, profile, currentAqi }: AdvisorChatProps)
           <label htmlFor="advisor-chat-input" className="sr-only">
             Ask a question about air quality
           </label>
+          {/* Never disabled while focused: that would drop keyboard focus mid-conversation. */}
           <input
+            ref={inputRef}
             id="advisor-chat-input"
             type="text"
             className="input"
             maxLength={600}
+            minLength={2}
+            required
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type a question"
-            disabled={sending}
+            aria-describedby={error ? 'advisor-chat-error' : undefined}
+            aria-invalid={error ? true : undefined}
           />
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={sending || input.trim().length < 2}
-            aria-label="Send"
+            aria-disabled={sending || input.trim().length < 2}
+            aria-label={sending ? 'Sending question' : 'Send question'}
           >
             <ArrowUp size={16} aria-hidden="true" />
           </button>

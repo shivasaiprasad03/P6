@@ -134,9 +134,9 @@ export function AirQualityOverview({
       )}
 
       <div className="reading-grid">
-        <div className={`panel reading sev-${current.severity}`} aria-live="polite">
+        <div className={`panel reading sev-${current.severity}`}>
           <p className="eyebrow">US AQI · now</p>
-          <div className="reading-figure">
+          <div className="reading-figure" aria-live="polite" aria-atomic="true">
             <span className="reading-number">{current.usAqi}</span>
             <span className="reading-band">{band.label}</span>
           </div>
@@ -158,8 +158,8 @@ export function AirQualityOverview({
       </div>
 
       <div className="panel">
-        <h3 className="panel-label">Pollutants (µg/m³)</h3>
-        <dl className="pollutants" aria-label="Pollutant concentrations">
+        <h3 className="panel-label" id="pollutants-heading">Pollutants (µg/m³)</h3>
+        <dl className="pollutants" aria-describedby="pollutants-heading">
           {pollutants.map((p) => (
             <div key={p.key} className="pollutant">
               <dt>

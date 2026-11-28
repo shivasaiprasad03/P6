@@ -76,7 +76,8 @@ export function LiveStatusHeader({
           <span className="status-sep" aria-hidden="true">
             ·
           </span>
-          <span aria-live="polite">
+          {/* Not a live region: this text changes every few seconds and would interrupt readers. */}
+          <span>
             Updated {updatedAt} ({formatAge(secondsSinceSync)})
           </span>
         </p>
@@ -133,6 +134,10 @@ export function LiveStatusHeader({
           <RefreshCw size={16} aria-hidden="true" className={loading ? 'spin' : ''} />
         </button>
       </div>
+
+      <p className="sr-only" role="status">
+        {copied ? 'Air quality summary copied to the clipboard.' : ''}
+      </p>
     </div>
   );
 }

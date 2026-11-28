@@ -61,7 +61,7 @@ export class GeminiStructuredClient implements StructuredLlmClient {
       contents: [{ role: 'user', parts: [{ text: request.userPrompt }] }],
       generationConfig: {
         temperature: 0.35,
-        // Gemini 2.5 counts thinking tokens against this limit; leave room so JSON is not truncated.
+        // Gemini 2.5+ counts thinking tokens against this limit; leave room so JSON is not truncated.
         maxOutputTokens: 8192,
         responseMimeType: 'application/json',
       },

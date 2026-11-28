@@ -49,6 +49,7 @@ export function ForecastChart({ cityName, hourlyForecast, safestWindow }: Foreca
           type="button"
           className="btn btn-sm no-print"
           aria-expanded={showTable}
+          aria-controls="forecast-table"
           onClick={() => setShowTable((prev) => !prev)}
         >
           <TableIcon size={14} aria-hidden="true" />
@@ -131,7 +132,7 @@ export function ForecastChart({ cityName, hourlyForecast, safestWindow }: Foreca
       </svg>
 
       {showTable && (
-        <div className="table-scroll">
+        <div className="table-scroll" id="forecast-table">
           <table className="data-table">
             <caption className="sr-only">Hourly air quality forecast for {cityName}</caption>
             <thead>

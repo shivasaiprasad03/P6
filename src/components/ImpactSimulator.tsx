@@ -2,7 +2,11 @@ import { useMemo, useState } from 'react';
 import { ACTION_LIST, resolveActionFigures, type ActionId } from '../../shared/actions.js';
 import { simulateImpact } from '../../shared/impact.js';
 import type { HouseholdProfile } from '../../shared/types.js';
+import { useDebouncedValue } from '../hooks/useDebouncedValue.js';
 import { ActionChoiceCard } from './ActionChoiceCard.js';
+
+/** Wait for the slider to settle before announcing new totals to screen readers. */
+const ANNOUNCE_DELAY_MS = 700;
 
 interface ImpactSimulatorProps {
   baselinePm25: number;
@@ -38,6 +42,12 @@ export function ImpactSimulator({ baselinePm25, profile, cityName, initialSelect
   }
 
   const people = `${profile.householdSize} ${profile.householdSize === 1 ? 'person' : 'people'}`;
+  const announcement = useDebouncedValue(
+    `${selectedIds.length} habits selected: household PM2.5 dose down ${result.combinedExposureReductionPct}%, ` +
+      `${result.communityMonthlyCo2SavedKg.toLocaleString()} kg CO₂ avoided a month across ` +
+      `${communityHouseholds.toLocaleString()} households.`,
+    ANNOUNCE_DELAY_MS,
+  );
 
   return (
     <section className="stack-md" aria-labelledby="simulator-heading">
@@ -65,6 +75,7 @@ export function ImpactSimulator({ baselinePm25, profile, cityName, initialSelect
           max={1000}
           step={1}
           value={communityHouseholds}
+          aria-valuetext={`${communityHouseholds.toLocaleString()} ${communityHouseholds === 1 ? 'household' : 'households'}`}
           onChange={(e) => setCommunityHouseholds(Number(e.target.value))}
         />
         <div className="range-ticks" aria-hidden="true">
@@ -76,7 +87,11 @@ export function ImpactSimulator({ baselinePm25, profile, cityName, initialSelect
         </div>
       </div>
 
-      <div className="stat-grid" aria-live="polite">
+      <p className="sr-only" role="status">
+        {announcement}
+      </p>
+
+      <div className="stat-grid">
         <div className="panel stat">
           <p className="stat-label">Your household&apos;s PM2.5 dose</p>
           <p className="stat-value">−{result.combinedExposureReductionPct}%</p>

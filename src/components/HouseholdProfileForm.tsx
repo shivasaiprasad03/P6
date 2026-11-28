@@ -17,7 +17,9 @@ interface HouseholdProfileFormProps {
   onGeneratePlan: () => void;
 }
 
-const VULNERABLE_OPTIONS: ReadonlyArray<{ value: VulnerableGroup; label: string }> = [
+type Option<T extends string> = { value: T; label: string };
+
+const VULNERABLE_OPTIONS: ReadonlyArray<Option<VulnerableGroup>> = [
   { value: 'infants', label: 'Baby (0–2)' },
   { value: 'children', label: 'Children' },
   { value: 'elderly', label: 'Over 65' },
@@ -25,6 +27,118 @@ const VULNERABLE_OPTIONS: ReadonlyArray<{ value: VulnerableGroup; label: string 
   { value: 'pregnant', label: 'Pregnancy' },
   { value: 'outdoor_workers', label: 'Works outdoors' },
 ];
+
+const COMMUNITY_ROLE_OPTIONS: ReadonlyArray<Option<CommunityRole>> = [
+  { value: 'family', label: 'My household' },
+  { value: 'school_pta', label: "A school or parents' group" },
+  { value: 'neighborhood_rwa', label: "A residents' association" },
+];
+
+const HOME_TYPE_OPTIONS: ReadonlyArray<Option<HomeType>> = [
+  { value: 'apartment', label: 'Apartment' },
+  { value: 'independent_house', label: 'House' },
+  { value: 'shared_housing', label: 'Shared or multi-family home' },
+];
+
+const COOKING_FUEL_OPTIONS: ReadonlyArray<Option<CookingFuel>> = [
+  { value: 'gas', label: 'Gas (LPG / piped)' },
+  { value: 'induction_electric', label: 'Induction or electric' },
+  { value: 'biomass_solid', label: 'Wood, coal or other solid fuel' },
+];
+
+const COMMUTE_MODE_OPTIONS: ReadonlyArray<Option<CommuteMode>> = [
+  { value: 'car_petrol_diesel', label: 'Petrol or diesel car' },
+  { value: 'two_wheeler', label: 'Motorbike or scooter' },
+  { value: 'car_ev_hybrid', label: 'Electric or hybrid car' },
+  { value: 'public_transit', label: 'Metro or bus' },
+  { value: 'walk_cycle', label: 'Walking or cycling' },
+  { value: 'remote', label: 'Mostly at home' },
+];
+
+const BUDGET_TIER_OPTIONS: ReadonlyArray<Option<BudgetTier>> = [
+  { value: 'low_cost', label: 'Low cost / DIY' },
+  { value: 'moderate', label: 'Moderate' },
+  { value: 'flexible', label: 'Flexible' },
+];
+
+/** Keeps a numeric field inside its allowed range; an empty or invalid entry becomes `min`. */
+export function clampNumber(raw: string, min: number, max: number): number {
+  const value = Number(raw);
+  if (raw.trim() === '' || !Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function SelectField<T extends string>({
+  id,
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: T;
+  options: ReadonlyArray<Option<T>>;
+  onChange: (next: T) => void;
+}) {
+  return (
+    <div className="field">
+      <label htmlFor={id} className="label">
+        {label}
+      </label>
+      <select
+        id={id}
+        className="select"
+        value={value}
+        onChange={(e) => {
+          // Only accept values from our own option list, never arbitrary DOM input.
+          const match = options.find((opt) => opt.value === e.target.value);
+          if (match) onChange(match.value);
+        }}
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function NumberField({
+  id,
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <div className="field">
+      <label htmlFor={id} className="label">
+        {label}
+      </label>
+      <input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        className="input"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(clampNumber(e.target.value, min, max))}
+      />
+    </div>
+  );
+}
 
 /**
  * Household details used to tailor the plan: who lives there, the home, cooking,
@@ -38,12 +152,16 @@ export function HouseholdProfileForm({
   onChangeFocusNote,
   onGeneratePlan,
 }: HouseholdProfileFormProps) {
+  function update<K extends keyof HouseholdProfile>(key: K, value: HouseholdProfile[K]): void {
+    onChangeProfile({ ...profile, [key]: value });
+  }
+
   function toggleVulnerableGroup(group: VulnerableGroup): void {
     const exists = profile.vulnerableGroups.includes(group);
-    const nextGroups = exists
-      ? profile.vulnerableGroups.filter((g) => g !== group)
-      : [...profile.vulnerableGroups, group];
-    onChangeProfile({ ...profile, vulnerableGroups: nextGroups });
+    update(
+      'vulnerableGroups',
+      exists ? profile.vulnerableGroups.filter((g) => g !== group) : [...profile.vulnerableGroups, group],
+    );
   }
 
   return (
@@ -56,165 +174,71 @@ export function HouseholdProfileForm({
 
       <form
         className="profile-form"
+        aria-busy={generating}
         onSubmit={(e) => {
           e.preventDefault();
-          onGeneratePlan();
+          if (!generating) onGeneratePlan();
         }}
       >
         <div className="fields">
-          <div className="field">
-            <label htmlFor="household-size" className="label">
-              Household size
-            </label>
-            <input
-              id="household-size"
-              type="number"
-              className="input"
-              min={1}
-              max={20}
-              value={profile.householdSize}
-              onChange={(e) =>
-                onChangeProfile({
-                  ...profile,
-                  householdSize: Math.max(1, Math.min(20, Number(e.target.value) || 1)),
-                })
-              }
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="community-role" className="label">
-              Who are you planning for?
-            </label>
-            <select
-              id="community-role"
-              className="select"
-              value={profile.communityRole}
-              onChange={(e) =>
-                onChangeProfile({
-                  ...profile,
-                  communityRole: e.target.value as CommunityRole,
-                })
-              }
-            >
-              <option value="family">My household</option>
-              <option value="school_pta">A school or parents' group</option>
-              <option value="neighborhood_rwa">A residents' association</option>
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="home-type" className="label">
-              Home type
-            </label>
-            <select
-              id="home-type"
-              className="select"
-              value={profile.homeType}
-              onChange={(e) =>
-                onChangeProfile({ ...profile, homeType: e.target.value as HomeType })
-              }
-            >
-              <option value="apartment">Apartment</option>
-              <option value="independent_house">House</option>
-              <option value="shared_housing">Shared or multi-family home</option>
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="cooking-fuel" className="label">
-              Cooking fuel
-            </label>
-            <select
-              id="cooking-fuel"
-              className="select"
-              value={profile.cookingFuel}
-              onChange={(e) =>
-                onChangeProfile({
-                  ...profile,
-                  cookingFuel: e.target.value as CookingFuel,
-                })
-              }
-            >
-              <option value="gas">Gas (LPG / piped)</option>
-              <option value="induction_electric">Induction or electric</option>
-              <option value="biomass_solid">Wood, coal or other solid fuel</option>
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="commute-mode" className="label">
-              Main way of getting around
-            </label>
-            <select
-              id="commute-mode"
-              className="select"
-              value={profile.commuteMode}
-              onChange={(e) =>
-                onChangeProfile({
-                  ...profile,
-                  commuteMode: e.target.value as CommuteMode,
-                })
-              }
-            >
-              <option value="car_petrol_diesel">Petrol or diesel car</option>
-              <option value="two_wheeler">Motorbike or scooter</option>
-              <option value="car_ev_hybrid">Electric or hybrid car</option>
-              <option value="public_transit">Metro or bus</option>
-              <option value="walk_cycle">Walking or cycling</option>
-              <option value="remote">Mostly at home</option>
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="commute-km" className="label">
-              Daily round trip (km)
-            </label>
-            <input
-              id="commute-km"
-              type="number"
-              className="input"
-              min={0}
-              max={250}
-              value={profile.dailyCommuteKm}
-              onChange={(e) =>
-                onChangeProfile({
-                  ...profile,
-                  dailyCommuteKm: Math.max(0, Math.min(250, Number(e.target.value) || 0)),
-                })
-              }
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="budget-tier" className="label">
-              Budget
-            </label>
-            <select
-              id="budget-tier"
-              className="select"
-              value={profile.budgetTier}
-              onChange={(e) =>
-                onChangeProfile({
-                  ...profile,
-                  budgetTier: e.target.value as BudgetTier,
-                })
-              }
-            >
-              <option value="low_cost">Low cost / DIY</option>
-              <option value="moderate">Moderate</option>
-              <option value="flexible">Flexible</option>
-            </select>
-          </div>
+          <NumberField
+            id="household-size"
+            label="Household size"
+            value={profile.householdSize}
+            min={1}
+            max={20}
+            onChange={(n) => update('householdSize', Math.round(n))}
+          />
+          <SelectField
+            id="community-role"
+            label="Who are you planning for?"
+            value={profile.communityRole}
+            options={COMMUNITY_ROLE_OPTIONS}
+            onChange={(v) => update('communityRole', v)}
+          />
+          <SelectField
+            id="home-type"
+            label="Home type"
+            value={profile.homeType}
+            options={HOME_TYPE_OPTIONS}
+            onChange={(v) => update('homeType', v)}
+          />
+          <SelectField
+            id="cooking-fuel"
+            label="Cooking fuel"
+            value={profile.cookingFuel}
+            options={COOKING_FUEL_OPTIONS}
+            onChange={(v) => update('cookingFuel', v)}
+          />
+          <SelectField
+            id="commute-mode"
+            label="Main way of getting around"
+            value={profile.commuteMode}
+            options={COMMUTE_MODE_OPTIONS}
+            onChange={(v) => update('commuteMode', v)}
+          />
+          <NumberField
+            id="commute-km"
+            label="Daily round trip (km)"
+            value={profile.dailyCommuteKm}
+            min={0}
+            max={250}
+            onChange={(n) => update('dailyCommuteKm', n)}
+          />
+          <SelectField
+            id="budget-tier"
+            label="Budget"
+            value={profile.budgetTier}
+            options={BUDGET_TIER_OPTIONS}
+            onChange={(v) => update('budgetTier', v)}
+          />
 
           <div className="field field-wide">
             <label className="check">
               <input
                 type="checkbox"
                 checked={profile.hasHepaPurifier}
-                onChange={(e) =>
-                  onChangeProfile({ ...profile, hasHepaPurifier: e.target.checked })
-                }
+                onChange={(e) => update('hasHepaPurifier', e.target.checked)}
               />
               We already own a HEPA purifier
             </label>
@@ -249,10 +273,15 @@ export function HouseholdProfileForm({
             value={focusNote}
             onChange={(e) => onChangeFocusNote(e.target.value)}
             placeholder="e.g. football practice at 4 pm"
+            aria-describedby="focus-note-hint"
           />
+          <p id="focus-note-hint" className="hint">
+            Mention a time and the plan checks it against the forecast. Up to 240 characters.
+          </p>
         </div>
 
-        <button type="submit" className="btn btn-primary btn-block" disabled={generating}>
+        {/* aria-disabled, not disabled, so the button keeps keyboard focus while the plan updates. */}
+        <button type="submit" className="btn btn-primary btn-block" aria-disabled={generating}>
           {generating ? 'Updating plan…' : 'Update my plan'}
         </button>
       </form>

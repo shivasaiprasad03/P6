@@ -50,7 +50,7 @@ export function RecommendationCard({ recommendation }: { recommendation: ActionR
         ))}
       </ol>
 
-      <div className="rec-impact" aria-label={`Estimated effect of: ${recommendation.title}`}>
+      <div className="rec-impact" role="group" aria-label={`Estimated effect of: ${recommendation.title}`}>
         <ul className="rec-figures">
           {figureLabels(figures).map((label) => (
             <li key={label}>

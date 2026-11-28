@@ -14,6 +14,20 @@ interface LocationSelectorProps {
  * City picker: a WAI-ARIA combobox search (`ArrowDown`/`ArrowUp`/`Enter`/`Escape`),
  * a browser-location button, and quick picks for a few reference cities.
  */
+/** Text for the always-present status region, so result changes are announced. */
+export function searchStatusText(
+  searching: boolean,
+  error: string | null,
+  resultCount: number,
+  resultsAreCurrent: boolean,
+): string {
+  if (searching) return 'Searching…';
+  if (error) return error;
+  if (!resultsAreCurrent) return '';
+  if (resultCount === 0) return 'No matching cities.';
+  return `${resultCount} ${resultCount === 1 ? 'city' : 'cities'} found.`;
+}
+
 export function LocationSelector({
   selectedCity,
   onSelectCity,
@@ -26,6 +40,8 @@ export function LocationSelector({
   const [activeIndex, setActiveIndex] = useState(-1);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  /** The query the current `results` belong to, so stale counts are never announced. */
+  const [resultsQuery, setResultsQuery] = useState('');
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -40,6 +56,7 @@ export function LocationSelector({
       try {
         const cities = await searchCitiesApi(trimmed, controller.signal);
         setResults(cities);
+        setResultsQuery(trimmed);
         setActiveIndex(cities.length > 0 ? 0 : -1);
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
@@ -115,8 +132,9 @@ export function LocationSelector({
             placeholder="Search a city"
             autoComplete="off"
             aria-autocomplete="list"
-            aria-controls={listboxId}
+            aria-controls={results.length > 0 ? listboxId : undefined}
             aria-expanded={results.length > 0}
+            aria-describedby={`${inputId}-help`}
             aria-activedescendant={activeOptionId}
           />
           {results.length > 0 && (
@@ -159,11 +177,17 @@ export function LocationSelector({
         </button>
       </div>
 
-      {(searching || searchError) && (
-        <p className="hint" role="status" aria-live="polite">
-          {searching ? 'Searching…' : searchError}
-        </p>
-      )}
+      <p id={`${inputId}-help`} className="sr-only">
+        Type at least 2 letters, then use the up and down arrow keys to pick a city and Enter to choose it.
+      </p>
+      <p className={searching || searchError ? 'hint' : 'sr-only'} role="status">
+        {searchStatusText(
+          searching,
+          searchError,
+          results.length,
+          query.trim().length >= 2 && resultsQuery === query.trim(),
+        )}
+      </p>
 
       <div className="city-chips" role="group" aria-label="Quick city picks">
         {PRESET_CITIES.map((city) => {

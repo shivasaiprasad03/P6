@@ -113,6 +113,11 @@ export function createApp(config: AppConfig = {}): Express {
   app.use(compression());
   app.use(express.json({ limit: NETWORK_LIMITS.jsonBodyLimit, strict: true }));
 
+  // API responses carry household details; keep them out of shared and browser caches.
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   app.use('/api', createApiRouter(config.apiOptions));
   app.use('/api', (_req, res) => {
     res.status(404).json({

@@ -30,8 +30,14 @@ export function errorHandler(
   err: unknown,
   req: Request,
   res: Response,
-  _next: NextFunction,
+  next: NextFunction,
 ): void {
+  // A streaming response (SSE) may already have sent headers; let Express close it.
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+
   const requestId = typeof res.locals.requestId === 'string' ? res.locals.requestId : undefined;
 
   if (err instanceof ZodError) {

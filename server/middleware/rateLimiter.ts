@@ -30,7 +30,11 @@ export function createRateLimiter(options: RateLimiterOptions) {
     const windowStart = now - options.windowMs;
 
     let bucket = buckets.get(clientIp);
-    if (!bucket) {
+    if (bucket) {
+      // Re-insert so Map order tracks recency and eviction drops the least recent client.
+      buckets.delete(clientIp);
+      buckets.set(clientIp, bucket);
+    } else {
       if (buckets.size >= maxClients) {
         const oldestKey = buckets.keys().next().value;
         if (oldestKey !== undefined) {

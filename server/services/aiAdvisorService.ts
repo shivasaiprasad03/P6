@@ -8,7 +8,7 @@ import type { z } from 'zod';
 import { ACTION_CATALOG, resolveActionFigures } from '../../shared/actions.js';
 import { buildRulesChatResponse } from '../../shared/advisor/chatEngine.js';
 import { buildRulesPlan } from '../../shared/advisor/planEngine.js';
-import { detectPromptInjection } from '../../shared/advisor/promptGuard.js';
+import { detectPromptInjection, filterSafeHistory } from '../../shared/advisor/promptGuard.js';
 import { SAFETY_DISCLAIMER } from '../../shared/constants.js';
 import { aiChatPayloadSchema, aiPlanPayloadSchema } from '../../shared/schemas.js';
 import type {
@@ -114,8 +114,10 @@ export async function answerAirQualityQuestion(
   // Suspected injection never reaches the model; the rules engine politely declines.
   if (detectPromptInjection(message)) return buildRulesChatResponse(report, profile, message);
 
+  // History comes from the browser too, so forged turns carrying injections are dropped.
+  const history = filterSafeHistory(params.history);
   const ai = await llm.generateStructuredJson({
-    ...buildAdvisorChatPrompt(params),
+    ...buildAdvisorChatPrompt({ ...params, history }),
     schema: aiChatPayloadSchema,
   });
   if (!ai) return buildRulesChatResponse(report, profile, message);

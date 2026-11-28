@@ -93,8 +93,10 @@ On Windows, run the tests from a path that starts with an uppercase drive letter
 
 ## Accessibility and usability
 
-Keyboard-operable throughout: WAI-ARIA tabs with arrow keys, a combobox city search, a skip link and visible focus. The forecast chart has a text description and a data-table view. Live regions announce updates. Light, dark and high-contrast themes are included, the layout is responsive and printable, and the app can use your browser's location. Copy is written in plain language.
+Keyboard-operable throughout: WAI-ARIA tabs with arrow keys and focusable panels, a combobox city search that announces how many cities matched, a skip link and visible focus. Buttons and inputs stay focusable while a request is running (`aria-disabled`, never `disabled` on a focused control), and the question box takes focus back after each answer. The forecast chart has a text description and a data-table view. Live regions announce only meaningful changes: new readings, copied text, and calculator totals once the slider settles. The ticking "updated … ago" clock is deliberately silent. Light, dark and high-contrast themes are included, the layout is responsive and printable, and the app can use your browser's location. Copy is written in plain language.
+
+`tests/frontend.wcag.test.tsx` runs axe-core's WCAG 2.2 A/AA rules against every tab, and checks focus management and announcements.
 
 ## Security
 
-See [SECURITY.md](SECURITY.md): Zod validation of every input, a strict CSP and Helmet headers, a CORS allowlist, per-IP rate limits (tighter on AI routes), fixed outbound URLs (no SSRF), the API key kept server-side in a header, and error responses that never leak internals.
+See [SECURITY.md](SECURITY.md): Zod validation of every input, a strict CSP and Helmet headers, a CORS allowlist, per-IP rate limits (tighter on AI routes), fixed outbound URLs (no SSRF), the API key kept server-side in a header, prompt-injection screening of questions *and* chat history, capped live-update streams, `no-store` API responses, security headers on every host (Express, Vercel, Firebase), and error responses that never leak internals.
